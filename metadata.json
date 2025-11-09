@@ -1,0 +1,5 @@
+{
+  "name": "Zerodha TradeBot UI",
+  "description": "A simulated trading bot application for Zerodha Kite, designed to execute ATM straddle strategies on Nifty and BankNifty based on predefined rules like time, stop-loss, and max daily loss.",
+  "requestFramePermissions": []
+}
