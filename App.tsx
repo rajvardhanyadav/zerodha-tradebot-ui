@@ -13,11 +13,15 @@ const getInitialToken = (): string | null => {
   }
 };
 
-
 const App: React.FC = () => {
   const [jwtToken, setJwtToken] = useState<string | null>(getInitialToken());
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Ensure dark theme is applied
+    document.documentElement.classList.add('dark');
+  }, []);
 
   const safeSetToken = useCallback((token: string) => {
     try {
@@ -49,7 +53,6 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // We only need to manage loading state for the main app, not the callback page.
     if (window.location.pathname !== '/callback') {
       setIsLoading(false);
     }
@@ -64,12 +67,12 @@ const App: React.FC = () => {
   }
 
   if (isLoading) {
-      return <div className="flex items-center justify-center min-h-screen text-xl">Loading...</div>;
+      return <div className="flex items-center justify-center min-h-screen bg-slate-900 text-slate-200 text-xl">Loading...</div>;
   }
   
   if (error) {
       return (
-          <div className="flex flex-col items-center justify-center min-h-screen text-xl text-loss">
+          <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-xl text-loss">
               <p>{error}</p>
               <a href="/" className="mt-4 px-4 py-2 bg-kite-blue text-white rounded">
                   Go to Login
@@ -79,7 +82,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-dark-bg font-sans">
+    <div className="min-h-screen bg-slate-900 font-sans text-slate-200">
       {jwtToken ? <Dashboard onLogout={handleLogout} /> : <LoginScreen onAuthSuccess={handleAuthSuccess} />}
     </div>
   );

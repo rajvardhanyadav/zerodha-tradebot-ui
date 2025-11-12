@@ -46,11 +46,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthSuccess }) => {
   const isLoading = isUrlLoading || isTokenLoading;
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-kite-grey">
-      <div className="w-full max-w-sm p-8 space-y-6 bg-white rounded-lg shadow-md text-center">
-        <img src="https://kite.zerodha.com/static/images/kite-logo.svg" alt="Kite Logo" className="w-24 h-auto mx-auto mb-4" />
+    <div className="flex items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-900">
+      <div className="w-full max-w-sm p-8 space-y-6 bg-white dark:bg-slate-800 rounded-lg shadow-md text-center">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-24 h-24 text-kite-blue mx-auto mb-4">
+            <path d="M4 9H28" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M16 9V26" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M16 20L22 14L28 20" stroke="#22C55E" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
         
-        <h2 className="text-2xl font-bold text-gray-800">Login to TradeBot</h2>
+        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200">Login to TradeBot</h2>
         
         {error && <p className="text-sm text-red-600 my-2">{error}</p>}
         
@@ -58,7 +62,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthSuccess }) => {
             {!loginInitiated && (
               <>
                 <div>
-                    <p className="text-sm text-gray-600 mb-2">
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
                       Click below to authorize in a new tab.
                     </p>
                     <button
@@ -71,15 +75,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthSuccess }) => {
                 </div>
                 
                 <div className="relative flex py-2 items-center">
-                    <div className="flex-grow border-t border-gray-300"></div>
-                    <span className="flex-shrink mx-4 text-gray-500 text-sm">OR</span>
-                    <div className="flex-grow border-t border-gray-300"></div>
+                    <div className="flex-grow border-t border-slate-300 dark:border-slate-600"></div>
+                    <span className="flex-shrink mx-4 text-slate-500 dark:text-slate-400 text-sm">OR</span>
+                    <div className="flex-grow border-t border-slate-300 dark:border-slate-600"></div>
                 </div>
               </>
             )}
 
             <div className="text-left">
-                <label htmlFor="request-token" className="text-sm text-gray-600">
+                <label htmlFor="request-token" className="text-sm text-slate-500 dark:text-slate-400">
                   {loginInitiated ? 'Paste token from new tab below' : 'Enter Request Token Manually'}
                 </label>
                 <input
@@ -88,7 +92,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthSuccess }) => {
                     value={requestToken}
                     onChange={(e) => setRequestToken(e.target.value)}
                     placeholder="Paste token from callback URL"
-                    className="w-full px-3 py-2 mt-1 text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                    className="w-full px-3 py-2 mt-1 text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-kite-blue"
                     disabled={isLoading}
                     autoFocus={loginInitiated}
                 />
@@ -102,7 +106,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthSuccess }) => {
             </button>
         </div>
 
-        <p className="text-xs text-gray-500 mt-4">
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">
           {loginInitiated
             ? "A new tab has opened. Complete the login, then copy the request_token and paste it above."
             : "After logging in with Kite, you will be redirected. Copy the `request_token` from that page's URL and paste it above."}

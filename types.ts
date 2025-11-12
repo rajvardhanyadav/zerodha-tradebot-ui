@@ -80,8 +80,50 @@ export interface Position {
   tradingSymbol: string;
   exchange: string;
   product: string;
-  quantity: number;
+  netQuantity: number;
   averagePrice: number;
   lastPrice: number;
   pnl: number;
+  buyValue: number;
+  sellValue: number;
+}
+
+export interface DayPNL {
+  totalRealised: number;
+  totalUnrealised: number;
+  totalM2M: number;
+  totalDayPnL: number;
+  positionCount: number;
+  tradingMode: string;
+}
+
+export interface ChargeDetails {
+  transactionTax: number;
+  transactionTaxType: string;
+  exchangeTurnoverCharge: number;
+  sebiTurnoverCharge: number;
+  brokerage: number;
+  stampDuty: number;
+  gst: {
+    igst: number;
+    cgst: number;
+    sgst: number;
+    total: number;
+  };
+  total: number;
+}
+
+export interface OrderCharge {
+  orderId: string;
+  charges: ChargeDetails;
+}
+
+export interface ChargesBreakdown {
+  brokerage: number;
+  stt: number;
+  exchange: number;
+  sebi: number;
+  stampDuty: number;
+  gst: number;
+  total: number;
 }

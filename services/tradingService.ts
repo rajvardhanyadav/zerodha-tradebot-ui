@@ -1,4 +1,3 @@
-
 import { Instrument, StrategyType, StrategyPosition } from '../types';
 import * as api from './kiteConnect';
 
@@ -7,6 +6,10 @@ interface ExecuteStrategyParams {
   instrumentType: Instrument;
   expiry: string; // e.g., "WEEKLY", "MONTHLY", or "2024-11-28"
   strikeGap?: number;
+  lots: number;
+  stopLossPoints: number;
+  targetPoints: number;
+  maxLossLimit: number;
 }
 
 export const runStrategy = async (params: ExecuteStrategyParams): Promise<any> => {
@@ -14,6 +17,10 @@ export const runStrategy = async (params: ExecuteStrategyParams): Promise<any> =
         strategyType: params.strategyType,
         instrumentType: params.instrumentType,
         expiry: params.expiry,
+        lots: params.lots,
+        stopLossPoints: params.stopLossPoints,
+        targetPoints: params.targetPoints,
+        maxLossLimit: params.maxLossLimit,
     };
 
     if (params.strategyType === StrategyType.OTM_STRANGLE && params.strikeGap) {
@@ -25,4 +32,8 @@ export const runStrategy = async (params: ExecuteStrategyParams): Promise<any> =
 
 export const getActiveStrategies = (): Promise<StrategyPosition[]> => {
     return api.getActiveStrategies();
+};
+
+export const stopAllStrategies = (): Promise<{ message: string }> => {
+    return api.stopAllStrategies();
 };

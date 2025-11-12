@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position } from '../types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, DayPNL, ChargesBreakdown } from '../types';
 import * as tradingService from '../services/tradingService';
 import * as api from '../services/kiteConnect';
 import StatCard from './StatCard';
@@ -9,29 +9,32 @@ import PositionsTable from './PositionsTable';
 import OrdersTable from './OrdersTable';
 import TradeLogView from './TradeLogView';
 
-const MAX_LOSS = -3000;
-
 const TabButton: React.FC<{ title: string; isActive: boolean; onClick: () => void }> = ({ title, isActive, onClick }) => (
     <button
         onClick={onClick}
         className={`px-4 py-2 text-sm font-medium transition-colors focus:outline-none ${
             isActive
-                ? 'border-b-2 border-kite-blue text-dark-text'
-                : 'text-dark-text-secondary hover:text-dark-text'
+                ? 'border-b-2 border-kite-blue text-slate-200'
+                : 'text-slate-400 hover:text-slate-200'
         }`}
     >
         {title}
     </button>
 );
 
-const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [botStatus, setBotStatus] = useState<BotStatus>(BotStatus.STOPPED);
     const [instrument, setInstrument] = useState<Instrument | ''>('');
     const [strategy, setStrategy] = useState<StrategyType | ''>('');
     const [strangleDistance, setStrangleDistance] = useState<number>(100);
+    const [lots, setLots] = useState<number>(1);
+    const [stopLossPoints, setStopLossPoints] = useState<number>(10);
+    const [targetPoints, setTargetPoints] = useState<number>(15);
+    const [maxLossLimit, setMaxLossLimit] = useState<number>(3000);
     const [expiries, setExpiries] = useState<string[]>([]);
     const [selectedExpiry, setSelectedExpiry] = useState<string>('');
     const [totalPL, setTotalPL] = useState<number>(0);
+    const [chargesBreakdown, setChargesBreakdown] = useState<ChargesBreakdown>({ brokerage: 0, stt: 0, exchange: 0, sebi: 0, stampDuty: 0, gst: 0, total: 0 });
     const [activeStrategies, setActiveStrategies] = useState<StrategyPosition[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [positions, setPositions] = useState<Position[]>([]);
@@ -45,12 +48,44 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const [ltpLoadingDots, setLtpLoadingDots] = useState<string>('');
     const [monitoringStatus, setMonitoringStatus] = useState<MonitoringStatus | null>(null);
     const [stoppingMonitorId, setStoppingMonitorId] = useState<string | null>(null);
+    const [isStoppingBot, setIsStoppingBot] = useState<boolean>(false);
     const [activeTab, setActiveTab] = useState<'strategies' | 'positions' | 'orders'>('strategies');
+    const [confirmingStopBot, setConfirmingStopBot] = useState<boolean>(false);
+    const [confirmingStopMonitorId, setConfirmingStopMonitorId] = useState<string | null>(null);
+    const [isAutoRefreshEnabled, setIsAutoRefreshEnabled] = useState<boolean>(true);
+    const [isManualRefreshing, setIsManualRefreshing] = useState<boolean>(false);
+    const [isPositionsLoading, setIsPositionsLoading] = useState<boolean>(false);
+    const [isOrdersLoading, setIsOrdersLoading] = useState<boolean>(false);
 
 
     const addLog = useCallback((message: string, type: TradeLog['type']) => {
         setTradeLog(prev => [{ timestamp: new Date().toLocaleTimeString(), message, type }, ...prev].slice(0, 100));
     }, []);
+    
+    // Timeout for stop bot confirmation
+    useEffect(() => {
+        let timer: number | undefined;
+        if (confirmingStopBot) {
+            addLog('Click "Stop Bot" again within 5 seconds to confirm.', 'warning');
+            timer = window.setTimeout(() => {
+                setConfirmingStopBot(false);
+            }, 5000);
+        }
+        return () => clearTimeout(timer);
+    }, [confirmingStopBot, addLog]);
+
+    // Timeout for stop monitor confirmation
+    useEffect(() => {
+        let timer: number | undefined;
+        if (confirmingStopMonitorId) {
+            addLog(`Click "Stop Monitor" again for the strategy to confirm.`, 'warning');
+            timer = window.setTimeout(() => {
+                setConfirmingStopMonitorId(null);
+            }, 5000);
+        }
+        return () => clearTimeout(timer);
+    }, [confirmingStopMonitorId, addLog]);
+
 
     // Effect for loading animation dots
     useEffect(() => {
@@ -113,6 +148,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             setSelectedExpiry('');
             setIsLtpLoading(true);
             setLtp(0);
+            setLots(1); // Reset lots on instrument change
 
             try {
                 const fetchedExpiries = (await api.getStrategyExpiries(instrument) || []).filter(Boolean);
@@ -137,11 +173,40 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         };
         loadExpiriesAndLtp();
     }, [instrument, instruments, addLog]);
+    
+    // Fetch data for the active tab (Positions or Orders)
+    useEffect(() => {
+        const fetchTabData = async () => {
+            if (activeTab === 'positions') {
+                setIsPositionsLoading(true);
+                try {
+                    const fetchedPositions = await api.getPositions();
+                    setPositions(fetchedPositions);
+                } catch (e) {
+                    addLog(`Failed to fetch positions: ${(e as Error).message}`, 'error');
+                } finally {
+                    setIsPositionsLoading(false);
+                }
+            } else if (activeTab === 'orders') {
+                setIsOrdersLoading(true);
+                try {
+                    const fetchedOrders = await api.getOrders();
+                    setOrders(fetchedOrders);
+                } catch (e) {
+                    addLog(`Failed to fetch orders: ${(e as Error).message}`, 'error');
+                } finally {
+                    setIsOrdersLoading(false);
+                }
+            }
+        };
+
+        fetchTabData();
+    }, [activeTab, addLog]);
 
     const executeStrategy = useCallback(async () => {
-        if (totalPL <= MAX_LOSS) {
+        if (totalPL <= -maxLossLimit) {
             setBotStatus(BotStatus.MAX_LOSS_REACHED);
-            addLog(`Max daily loss of ${MAX_LOSS} reached. Stopping trade for the day.`, 'error');
+            addLog(`Max daily loss of ${maxLossLimit} reached. Stopping trade for the day.`, 'error');
             return;
         }
         
@@ -152,15 +217,15 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         
         addLog('Note: New API does not support auto-closing positions. A new strategy will be opened.', 'warning');
 
-        const params: {
-            strategyType: StrategyType;
-            instrumentType: Instrument;
-            expiry: string;
-            strikeGap?: number;
-        } = {
+        const params = {
             strategyType: strategy,
             instrumentType: instrument,
             expiry: selectedExpiry,
+            lots: lots,
+            stopLossPoints,
+            targetPoints,
+            maxLossLimit,
+            strikeGap: strategy === StrategyType.OTM_STRANGLE ? strangleDistance : undefined,
         };
 
         if (strategy === StrategyType.OTM_STRANGLE) {
@@ -168,12 +233,11 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 addLog(`Strangle distance must be positive.`, 'error');
                 return;
             }
-            params.strikeGap = strangleDistance;
         }
 
         const strategyDesc = strategy.replace(/_/g, ' ');
         const fullDesc = strategy === StrategyType.OTM_STRANGLE ? `${strategyDesc} (${strangleDistance} pts)` : strategyDesc;
-        addLog(`Executing: ${fullDesc} on ${instrument} for ${selectedExpiry} expiry.`, 'info');
+        addLog(`Executing: ${fullDesc} on ${instrument} for ${selectedExpiry} expiry with ${lots} lot(s).`, 'info');
 
         try {
             const result = await tradingService.runStrategy(params);
@@ -181,77 +245,132 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         } catch (error) {
             addLog(`Failed to execute strategy: ${(error as Error).message}`, 'error');
         }
-    }, [instrument, addLog, totalPL, selectedExpiry, strategy, strangleDistance]);
+    }, [instrument, addLog, totalPL, selectedExpiry, strategy, strangleDistance, lots, stopLossPoints, targetPoints, maxLossLimit]);
 
-    // Main background loop for fetching data silently
-    useEffect(() => {
-        if (!instrument || instruments.length === 0) return;
-        
-        const timer = setInterval(async () => {
-            try {
-                const selectedInstrumentObject = instruments.find(i => i.code === instrument);
-                if (!selectedInstrumentObject) return;
+    const fetchData = useCallback(async (isManual = false) => {
+        if (isManual) {
+            setIsManualRefreshing(true);
+            addLog('Manually refreshing data...', 'info');
+        }
+    
+        try {
+            const selectedInstrumentObject = instruments.find(i => i.code === instrument);
+            if (!selectedInstrumentObject) return;
+    
+            const [fetchedStrategies, currentLtp, monitorStatus, dayPnl, orderCharges] = await Promise.all([
+                tradingService.getActiveStrategies(),
+                api.getLTP(selectedInstrumentObject.name),
+                api.getMonitoringStatus(),
+                api.getTotalDayPNL(),
+                api.getOrderCharges(),
+            ]);
+            
+            setLtp(prevLtp => (currentLtp !== prevLtp ? currentLtp : prevLtp));
+            setActiveStrategies(prev => JSON.stringify(prev) !== JSON.stringify(fetchedStrategies) ? fetchedStrategies : prev);
+            setMonitoringStatus(prev => JSON.stringify(prev) !== JSON.stringify(monitorStatus) ? monitorStatus : prev);
 
-                const [fetchedStrategies, currentLtp, monitorStatus, fetchedOrders, fetchedPositions] = await Promise.all([
-                    tradingService.getActiveStrategies(),
-                    api.getLTP(selectedInstrumentObject.name),
-                    api.getMonitoringStatus(),
-                    api.getOrders(),
-                    api.getPositions(),
-                ]);
-                
-                setLtp(prevLtp => (currentLtp !== prevLtp ? currentLtp : prevLtp));
-                setActiveStrategies(prev => JSON.stringify(prev) !== JSON.stringify(fetchedStrategies) ? fetchedStrategies : prev);
-                setMonitoringStatus(prev => JSON.stringify(prev) !== JSON.stringify(monitorStatus) ? monitorStatus : prev);
-                setOrders(prev => JSON.stringify(prev) !== JSON.stringify(fetchedOrders) ? fetchedOrders : prev);
-                setPositions(prev => JSON.stringify(prev) !== JSON.stringify(fetchedPositions) ? fetchedPositions : prev);
-
-                const currentPL = fetchedPositions.reduce((acc, s) => acc + (s.pnl ?? 0), 0);
-                setTotalPL(prevPL => prevPL !== currentPL ? currentPL : prevPL);
-                
-                if (botStatus !== BotStatus.RUNNING) return;
+            const totalBreakdown = (orderCharges && Array.isArray(orderCharges))
+                ? orderCharges.reduce((acc, item) => {
+                    const c = item.charges;
+                    if (c) {
+                        acc.brokerage += c.brokerage ?? 0;
+                        acc.stt += c.transactionTax ?? 0;
+                        acc.exchange += c.exchangeTurnoverCharge ?? 0;
+                        acc.sebi += c.sebiTurnoverCharge ?? 0;
+                        acc.stampDuty += c.stampDuty ?? 0;
+                        acc.gst += c.gst?.total ?? 0;
+                        acc.total += c.total ?? 0;
+                    }
+                    return acc;
+                }, { brokerage: 0, stt: 0, exchange: 0, sebi: 0, stampDuty: 0, gst: 0, total: 0 })
+                : { brokerage: 0, stt: 0, exchange: 0, sebi: 0, stampDuty: 0, gst: 0, total: 0 };
+            
+            setChargesBreakdown(prev => JSON.stringify(prev) !== JSON.stringify(totalBreakdown) ? totalBreakdown : prev);
+    
+            if (dayPnl) {
+                const currentGrossPL = dayPnl.totalDayPnL;
+                setTotalPL(prevPL => prevPL !== currentGrossPL ? currentGrossPL : prevPL);
                  
-                if (currentPL <= MAX_LOSS) {
+                if (botStatus === BotStatus.RUNNING && currentGrossPL <= -maxLossLimit) {
                     setBotStatus(BotStatus.MAX_LOSS_REACHED);
-                    addLog(`Max daily loss of ${MAX_LOSS} reached. Bot stopped.`, 'error');
+                    addLog(`Max daily loss of ${maxLossLimit} reached. Bot stopped.`, 'error');
                     addLog('Note: Positions must be closed manually.', 'warning');
-                    return;
-                }
-            } catch(e) {
-                addLog(`Error in main loop: ${(e as Error).message}`, 'error');
-                if ((e as Error).message.includes('Unauthorized')) {
-                    addLog('Session expired. Please log in again.', 'error');
-                    onLogout();
                 }
             }
-        }, 10000); 
 
-        return () => clearInterval(timer);
-    }, [botStatus, instrument, instruments, addLog, onLogout]);
+            if (isManual) {
+                addLog('Manual refresh complete.', 'success');
+            }
     
-    const handleStopMonitoring = async (executionId: string) => {
-        if (!window.confirm('Are you sure you want to stop monitoring this strategy? You will have to manage the position manually.')) {
+        } catch(e) {
+            addLog(`Error in main loop: ${(e as Error).message}`, 'error');
+            if ((e as Error).message.includes('Unauthorized')) {
+                addLog('Session expired. Please log in again.', 'error');
+                onLogout();
+            }
+        } finally {
+            if (isManual) {
+                setIsManualRefreshing(false);
+            }
+        }
+    }, [botStatus, instrument, instruments, addLog, onLogout, maxLossLimit]);
+    
+    // Main background loop for fetching data silently
+    useEffect(() => {
+        if (!instrument || instruments.length === 0 || !isAutoRefreshEnabled) {
             return;
         }
-        addLog(`Requesting to stop monitoring for ${executionId}...`, 'info');
-        setStoppingMonitorId(executionId);
-        try {
-            const message = await api.stopMonitoringExecution(executionId);
-            addLog(message, 'success');
-            // Manually refresh active strategies to reflect change immediately
-            const strategies = await tradingService.getActiveStrategies();
-            setActiveStrategies(strategies);
-        } catch (e) {
-            addLog(`Failed to stop monitoring: ${(e as Error).message}`, 'error');
-        } finally {
-            setStoppingMonitorId(null);
+
+        fetchData(); // Initial fetch
+        
+        const timer = setInterval(fetchData, 10000); 
+
+        return () => clearInterval(timer);
+    }, [isAutoRefreshEnabled, fetchData, instrument, instruments.length]);
+    
+    const handleStopMonitoring = async (executionId: string) => {
+        if (confirmingStopMonitorId === executionId) {
+            addLog(`Requesting to stop monitoring for ${executionId}...`, 'info');
+            setStoppingMonitorId(executionId);
+            setConfirmingStopMonitorId(null); // Reset confirmation
+            try {
+                const message = await api.stopMonitoringExecution(executionId);
+                addLog(message, 'success');
+                const strategies = await tradingService.getActiveStrategies();
+                setActiveStrategies(strategies);
+            } catch (e) {
+                addLog(`Failed to stop monitoring: ${(e as Error).message}`, 'error');
+            } finally {
+                setStoppingMonitorId(null);
+            }
+        } else {
+            setConfirmingStopMonitorId(executionId);
+            setConfirmingStopBot(false);
         }
     };
 
     const handleStartStop = async () => {
         if (botStatus === BotStatus.RUNNING) {
-            setBotStatus(BotStatus.STOPPED);
-            addLog('Bot stopped manually. Active strategies will NOT be closed automatically.', 'warning');
+            if (isStoppingBot) return;
+            if (confirmingStopBot) {
+                setIsStoppingBot(true);
+                setConfirmingStopBot(false);
+                addLog('Requesting to stop all strategies...', 'info');
+                try {
+                    const response = await tradingService.stopAllStrategies();
+                    addLog(response.message, 'success');
+                    setBotStatus(BotStatus.STOPPED);
+                    const strategies = await tradingService.getActiveStrategies();
+                    setActiveStrategies(strategies);
+                } catch (e) {
+                    addLog(`Failed to stop bot: ${(e as Error).message}`, 'error');
+                } finally {
+                    setIsStoppingBot(false);
+                }
+            } else {
+                setConfirmingStopBot(true);
+                setConfirmingStopMonitorId(null);
+            }
         } else if (botStatus === BotStatus.STOPPED || botStatus === BotStatus.INACTIVE) {
             setBotStatus(BotStatus.RUNNING);
             const strategyDesc = strategy.replace(/_/g, ' ');
@@ -266,24 +385,99 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     
     const isRunning = botStatus === BotStatus.RUNNING;
     
+    const { lotSize, strikeInterval } = useMemo(() => {
+        const selected = instruments.find(i => i.code === instrument);
+        return {
+            lotSize: selected?.lotSize || 0,
+            strikeInterval: selected?.strikeInterval || 50,
+        };
+    }, [instrument, instruments]);
+    
+    // Effect to update strangle distance when instrument or strategy changes
+    useEffect(() => {
+        if (strategy === StrategyType.OTM_STRANGLE) {
+            setStrangleDistance(strikeInterval);
+        }
+    }, [instrument, strategy, strikeInterval]);
+
+    const handleIncrementLots = () => setLots(l => l + 1);
+    const handleDecrementLots = () => setLots(l => Math.max(1, l - 1));
+    
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto">
-             <header className="flex flex-col md:flex-row justify-between items-start mb-6">
-                <div className="flex items-center space-x-4">
-                    <img src="https://kite.zerodha.com/static/images/kite-logo.svg" alt="Kite" className="h-8 w-auto bg-white p-1 rounded-sm" />
+             <header className="flex flex-col md:flex-row justify-between items-center mb-6">
+                <div className="flex items-center space-x-3">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-kite-blue">
+                        <path d="M4 9H28" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                        <path d="M16 9V26" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                        <path d="M16 20L22 14L28 20" stroke="#22C55E" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                     <div>
-                        <h1 className="text-2xl font-bold text-dark-text">TradeBot Dashboard</h1>
-                        {userProfile && <p className="text-sm text-dark-text-secondary">Welcome, {userProfile.userName}</p>}
+                        <h1 className="text-2xl font-bold text-slate-200">TradeBot Dashboard</h1>
+                        {userProfile && <p className="text-sm text-slate-400">Welcome, {userProfile.userName}</p>}
                     </div>
                 </div>
-                <div className="flex flex-col items-stretch md:items-end space-y-4 mt-4 md:mt-0 w-full md:w-auto">
-                    <div className="flex flex-wrap justify-start md:justify-end gap-4">
+                <div className="flex items-center space-x-4 mt-4 md:mt-0">
+                    <div className="flex items-center space-x-2">
+                        <label htmlFor="auto-refresh-toggle" className="text-sm text-slate-400 cursor-pointer">Auto-Refresh</label>
+                        <button
+                            id="auto-refresh-toggle"
+                            onClick={() => {
+                                const newState = !isAutoRefreshEnabled;
+                                setIsAutoRefreshEnabled(newState);
+                                addLog(`Auto-refresh ${newState ? 'enabled' : 'disabled'}.`, 'info');
+                            }}
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-kite-blue focus:ring-offset-2 focus:ring-offset-slate-900 ${isAutoRefreshEnabled ? 'bg-kite-blue' : 'bg-slate-600'}`}
+                            role="switch"
+                            aria-checked={isAutoRefreshEnabled}
+                        >
+                            <span
+                                aria-hidden="true"
+                                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isAutoRefreshEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+                            />
+                        </button>
+                    </div>
+                    {!isAutoRefreshEnabled && (
+                        <button
+                            onClick={() => fetchData(true)}
+                            disabled={isManualRefreshing}
+                            className="px-3 py-1.5 text-sm rounded-md font-semibold text-white bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-wait"
+                        >
+                            {isManualRefreshing ? 'Refreshing...' : 'Refresh Now'}
+                        </button>
+                    )}
+                    <button onClick={onLogout} className="px-4 py-2 rounded-md font-semibold text-white bg-slate-700 hover:bg-slate-600">
+                        Logout
+                    </button>
+                </div>
+            </header>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                <StatCard icon="status" title="Bot Status" value={botStatus} status={botStatus} />
+                <StatCard 
+                    icon="monitoring"
+                    title="Monitoring" 
+                    value={monitoringStatus ? (monitoringStatus.connected ? 'Connected' : 'Disconnect') : '...'}
+                    status={monitoringStatus ? (monitoringStatus.connected ? BotStatus.RUNNING : BotStatus.STOPPED) : undefined}
+                    subtitle={monitoringStatus ? `${monitoringStatus.activeMonitors} active` : ''}
+                />
+                <StatCard icon="ltp" title={`${instrument || 'Index'} LTP`} value={isLtpLoading ? ltpLoadingDots : (ltp > 0 ? ltp.toFixed(2) : '...')} />
+                <StatCard icon="gross-pl" title="Gross P/L" value={totalPL.toFixed(2)} isCurrency={true} isPL={true} />
+                <StatCard icon="charges" title="Charges" value={chargesBreakdown.total.toFixed(2)} isCurrency={true} breakdown={chargesBreakdown} />
+                <StatCard icon="net-pl" title="Net P/L" value={(totalPL - chargesBreakdown.total).toFixed(2)} isCurrency={true} isPL={true} />
+            </div>
+
+            <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6">
+                <h2 className="text-lg font-semibold mb-4 text-slate-200">Strategy Configuration</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 items-end mb-4">
+                    <div>
+                        <label htmlFor="strategy-select" className="block text-xs font-medium text-slate-400 mb-1">Strategy</label>
                          <select 
+                            id="strategy-select"
                             value={strategy}
                             onChange={(e) => setStrategy(e.target.value as StrategyType)}
                             disabled={isRunning}
-                            className="bg-dark-card border border-dark-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-kite-blue"
-                            aria-label="Select strategy"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
                          >
                             {strategyTypes.map(s => (
                                 <option key={s.name} value={s.name}>
@@ -291,83 +485,120 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                 </option>
                             ))}
                          </select>
+                    </div>
 
-                         {strategy === StrategyType.OTM_STRANGLE && (
-                            <div className="relative">
-                                 <input
-                                    type="number"
-                                    step={instrument === Instrument.NIFTY ? 50 : 100}
-                                    value={strangleDistance}
-                                    onChange={(e) => setStrangleDistance(Number(e.target.value))}
-                                    disabled={isRunning}
-                                    className="bg-dark-card border border-dark-border rounded-md pl-3 pr-12 py-2 w-32 focus:outline-none focus:ring-2 focus:ring-kite-blue"
-                                    aria-label="Strangle distance"
-                                 />
-                                <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-dark-text-secondary text-sm">
-                                    pts
-                                </span>
-                            </div>
-                         )}
-
-                         <select 
+                    <div>
+                        <label htmlFor="instrument-select" className="block text-xs font-medium text-slate-400 mb-1">Instrument</label>
+                        <select
+                            id="instrument-select"
                             value={instrument}
                             onChange={(e) => setInstrument(e.target.value as Instrument)}
                             disabled={isRunning}
-                            className="bg-dark-card border border-dark-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-kite-blue"
-                         >
+                            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                        >
                             {instruments.map(i => <option key={i.code} value={i.code}>{i.name}</option>)}
-                         </select>
-                         <select
+                        </select>
+                    </div>
+
+                     <div>
+                        <label htmlFor="expiry-select" className="block text-xs font-medium text-slate-400 mb-1">Expiry</label>
+                        <select
+                            id="expiry-select"
                             value={selectedExpiry}
                             onChange={(e) => setSelectedExpiry(e.target.value)}
                             disabled={isRunning || expiries.length === 0}
-                            className="bg-dark-card border border-dark-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-kite-blue disabled:opacity-50"
-                            aria-label="Select expiry date"
-                         >
+                            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue disabled:opacity-50"
+                        >
                             {expiries.length === 0 && <option>{instrument ? 'Loading...' : 'Select Instrument'}</option>}
                             {expiries.map((expiry) => (
                                 <option key={expiry} value={expiry}>
                                     {expiry.charAt(0).toUpperCase() + expiry.slice(1).toLowerCase()}
                                 </option>
                             ))}
-                         </select>
+                        </select>
                     </div>
-                    <div className="flex gap-4 self-start md:self-end">
-                         <button 
-                            onClick={handleStartStop}
-                            disabled={botStatus === BotStatus.MAX_LOSS_REACHED || !instrument || !strategy || !selectedExpiry}
-                            className={`px-6 py-2 rounded-md font-semibold text-white transition-colors ${
-                                isRunning ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
-                            } disabled:bg-gray-500 disabled:cursor-not-allowed`}
-                         >
-                            {isRunning ? 'Stop Bot' : 'Start Bot'}
-                         </button>
-                          <button onClick={onLogout} className="px-4 py-2 rounded-md font-semibold text-white bg-gray-600 hover:bg-gray-700">
-                            Logout
-                         </button>
+
+                    {strategy === StrategyType.OTM_STRANGLE && (
+                        <div>
+                            <label htmlFor="strangle-distance" className="block text-xs font-medium text-slate-400 mb-1">Strangle Distance (pts)</label>
+                            <input
+                                id="strangle-distance"
+                                type="number"
+                                step={strikeInterval}
+                                value={strangleDistance}
+                                onChange={(e) => setStrangleDistance(Number(e.target.value))}
+                                disabled={isRunning}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                            />
+                        </div>
+                    )}
+
+                    <div>
+                        <label htmlFor="quantity" className="block text-xs font-medium text-slate-400 mb-1">Lots</label>
+                        <div className="flex items-center bg-slate-900 border border-slate-700 rounded-md">
+                            <button onClick={handleDecrementLots} disabled={isRunning} className="px-2.5 py-1.5 text-base font-bold hover:bg-slate-700 transition-colors rounded-l-md disabled:opacity-50 disabled:cursor-not-allowed">-</button>
+                            <div className="text-center flex-grow px-2 py-1.5 border-x border-slate-700">
+                                <span className="font-semibold text-sm">{lots}</span>
+                                {lotSize > 0 && <span className="text-xs text-slate-400"> ({lots * lotSize} Qty)</span>}
+                            </div>
+                            <button onClick={handleIncrementLots} disabled={isRunning} className="px-2.5 py-1.5 text-base font-bold hover:bg-slate-700 transition-colors rounded-r-md disabled:opacity-50 disabled:cursor-not-allowed">+</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label htmlFor="stop-loss" className="block text-xs font-medium text-slate-400 mb-1">SL per Leg (pts)</label>
+                        <input
+                            id="stop-loss"
+                            type="number"
+                            value={stopLossPoints}
+                            onChange={(e) => setStopLossPoints(Number(e.target.value))}
+                            disabled={isRunning}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="target-points" className="block text-xs font-medium text-slate-400 mb-1">Target per Leg (pts)</label>
+                        <input
+                            id="target-points"
+                            type="number"
+                            value={targetPoints}
+                            onChange={(e) => setTargetPoints(Number(e.target.value))}
+                            disabled={isRunning}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="max-loss" className="block text-xs font-medium text-slate-400 mb-1">Max Loss Limit (₹)</label>
+                        <input
+                            id="max-loss"
+                            type="number"
+                            value={maxLossLimit}
+                            onChange={(e) => setMaxLossLimit(Number(e.target.value))}
+                            disabled={isRunning}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                        />
                     </div>
                 </div>
-            </header>
-
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                <StatCard title="Bot Status" value={botStatus} status={botStatus} />
-                <StatCard 
-                    title="Monitoring Service" 
-                    value={monitoringStatus ? (monitoringStatus.connected ? 'Connected' : 'Disconnected') : '...'}
-                    status={monitoringStatus ? (monitoringStatus.connected ? BotStatus.RUNNING : BotStatus.STOPPED) : undefined}
-                    subtitle={monitoringStatus ? `${monitoringStatus.activeMonitors} active` : ''}
-                />
-                <StatCard title={`${instrument || 'Index'} LTP`} value={isLtpLoading ? ltpLoadingDots : (ltp > 0 ? ltp.toFixed(2) : '...')} />
-                <StatCard title="Total P/L" value={totalPL.toFixed(2)} isCurrency={true} isPL={true} />
-                <StatCard title="Max Loss Limit" value={MAX_LOSS.toFixed(2)} isCurrency={true} />
+                 <div className="flex justify-end mt-4">
+                     <button 
+                        onClick={handleStartStop}
+                        disabled={isStoppingBot || botStatus === BotStatus.MAX_LOSS_REACHED || !instrument || !strategy || !selectedExpiry}
+                        className={`px-6 py-2 rounded-md font-semibold text-white transition-transform transform hover:scale-105 ${
+                            isRunning 
+                                ? (confirmingStopBot ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700') 
+                                : 'bg-green-600 hover:bg-green-700'
+                        } disabled:bg-gray-500 disabled:cursor-not-allowed disabled:scale-100`}
+                     >
+                        {isRunning ? (isStoppingBot ? 'Stopping...' : (confirmingStopBot ? 'Confirm Stop?' : 'Stop Bot')) : 'Start Bot'}
+                     </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-dark-card p-4 rounded-lg border border-dark-border">
-                    <div className="flex border-b border-dark-border">
-                        <TabButton title="Active Strategies" isActive={activeTab === 'strategies'} onClick={() => setActiveTab('strategies')} />
-                        <TabButton title="Positions" isActive={activeTab === 'positions'} onClick={() => setActiveTab('positions')} />
-                        <TabButton title="Orders" isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} />
+                <div className="lg:col-span-2 bg-slate-800 p-4 rounded-lg border border-slate-700">
+                    <div className="flex border-b border-slate-700">
+                        <TabButton title={`Active Strategies (${activeStrategies.length})`} isActive={activeTab === 'strategies'} onClick={() => setActiveTab('strategies')} />
+                        <TabButton title={`Positions (${positions.length})`} isActive={activeTab === 'positions'} onClick={() => setActiveTab('positions')} />
+                        <TabButton title={`Orders (${orders.length})`} isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} />
                     </div>
                     <div className="mt-4">
                         {activeTab === 'strategies' && (
@@ -375,18 +606,19 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                 strategies={activeStrategies} 
                                 onStopMonitoring={handleStopMonitoring} 
                                 stoppingMonitorId={stoppingMonitorId}
+                                confirmingStopMonitorId={confirmingStopMonitorId}
                             />
                         )}
-                        {activeTab === 'positions' && <PositionsTable positions={positions} />}
-                        {activeTab === 'orders' && <OrdersTable orders={orders} />}
+                        {activeTab === 'positions' && <PositionsTable positions={positions} isLoading={isPositionsLoading} />}
+                        {activeTab === 'orders' && <OrdersTable orders={orders} isLoading={isOrdersLoading} />}
                     </div>
                 </div>
-                <div className="bg-dark-card p-4 rounded-lg border border-dark-border">
-                   <h2 className="text-xl font-semibold mb-4 text-dark-text">Logs</h2>
+                <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                   <h2 className="text-xl font-semibold mb-4 text-slate-200">Logs</h2>
                    <TradeLogView logs={tradeLog} />
                 </div>
             </div>
-             <footer className="text-center text-dark-text-secondary mt-8 text-sm">
+             <footer className="text-center text-slate-400 mt-8 text-sm">
                 <p>Current Time: {currentTime.toLocaleTimeString()}</p>
                 <p className="mt-2">This application interacts with a live backend. Not financial advice.</p>
             </footer>

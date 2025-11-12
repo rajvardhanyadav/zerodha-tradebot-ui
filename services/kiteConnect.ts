@@ -2,20 +2,24 @@
  * This service acts as the API client for the trading bot backend.
  * It implements the API specification provided, handling authentication and data fetching.
  */
-import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position } from '../types';
+import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, DayPNL, OrderCharge } from '../types';
 
-const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
-//const BASE_URL = 'http://localhost:8080/api';
+//const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
+const BASE_URL = 'http://localhost:8080/api';
 
 // --- Helper Functions ---
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const token = localStorage.getItem('jwtToken');
-    const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-    };
+    const headers: Record<string, string> = {};
 
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    // Add Content-Type header only if there is a body.
+    // This prevents sending Content-Type on GET requests, which can cause 400 errors.
+    if (options.body) {
+         headers['Content-Type'] = 'application/json';
     }
 
     const response = await fetch(`${BASE_URL}${endpoint}`, { 
@@ -103,10 +107,17 @@ export const getActiveStrategies = (): Promise<StrategyPosition[]> => apiFetch('
 // --- Portfolio & Order APIs ---
 export const getOrders = (): Promise<Order[]> => apiFetch('/orders');
 
+// GET /api/orders/charges
+export const getOrderCharges = (): Promise<OrderCharge[]> => apiFetch('/orders/charges');
+
 export const getPositions = async (): Promise<Position[]> => {
     const response = await apiFetch<{ net: Position[], day: Position[] }>('/portfolio/positions');
-    return response.net ?? [];
+    // Use 'day' positions to get a complete view of the day's P/L, including squared-off positions.
+    return response.day ?? [];
 };
+
+// GET /api/portfolio/pnl/day
+export const getTotalDayPNL = (): Promise<DayPNL> => apiFetch('/portfolio/pnl/day');
 
 
 // --- Position Monitoring APIs ---
@@ -117,4 +128,9 @@ export const getMonitoringStatus = (): Promise<MonitoringStatus> => apiFetch('/m
 // DELETE /api/monitoring/{executionId}
 export const stopMonitoringExecution = (executionId: string): Promise<string> => apiFetch(`/monitoring/${executionId}`, {
     method: 'DELETE',
+});
+
+// POST /api/strategies/stop-all
+export const stopAllStrategies = (): Promise<{ message: string }> => apiFetch('/strategies/stop-all', {
+    method: 'POST',
 });
