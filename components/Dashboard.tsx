@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, DayPNL, ChargesBreakdown } from '../types';
+import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, DayPNL, ChargesBreakdown, HistoricalRunResult } from '../types';
 import * as tradingService from '../services/tradingService';
 import * as api from '../services/kiteConnect';
 import StatCard from './StatCard';
@@ -8,6 +9,7 @@ import ActiveStrategiesTable from './ActiveStrategiesTable';
 import PositionsTable from './PositionsTable';
 import OrdersTable from './OrdersTable';
 import TradeLogView from './TradeLogView';
+import HistoricalPLChart from './HistoricalPLChart';
 
 const TabButton: React.FC<{ title: string; isActive: boolean; onClick: () => void }> = ({ title, isActive, onClick }) => (
     <button
@@ -56,6 +58,8 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [isManualRefreshing, setIsManualRefreshing] = useState<boolean>(false);
     const [isPositionsLoading, setIsPositionsLoading] = useState<boolean>(false);
     const [isOrdersLoading, setIsOrdersLoading] = useState<boolean>(false);
+    const [historicalResult, setHistoricalResult] = useState<HistoricalRunResult | null>(null);
+    const [isHistoricalRunning, setIsHistoricalRunning] = useState<boolean>(false);
 
 
     const addLog = useCallback((message: string, type: TradeLog['type']) => {
@@ -246,6 +250,44 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             addLog(`Failed to execute strategy: ${(error as Error).message}`, 'error');
         }
     }, [instrument, addLog, totalPL, selectedExpiry, strategy, strangleDistance, lots, stopLossPoints, targetPoints, maxLossLimit]);
+    
+    const handleRunHistorical = useCallback(async () => {
+        if (!selectedExpiry || !strategy || !instrument) {
+            addLog('Strategy, instrument, or expiry not selected. Cannot run simulation.', 'error');
+            return;
+        }
+
+        const params = {
+            strategyType: strategy,
+            instrumentType: instrument,
+            expiry: selectedExpiry,
+            lots: lots,
+            stopLossPoints,
+            targetPoints,
+            maxLossLimit,
+            strikeGap: strategy === StrategyType.OTM_STRANGLE ? strangleDistance : undefined,
+        };
+        
+        if (strategy === StrategyType.OTM_STRANGLE && strangleDistance <= 0) {
+            addLog(`Strangle distance must be positive.`, 'error');
+            return;
+        }
+
+        setIsHistoricalRunning(true);
+        setHistoricalResult(null);
+        addLog('Starting historical simulation...', 'info');
+
+        try {
+            const result = await api.executeHistoricalStrategy(params);
+            setHistoricalResult(result);
+            addLog(`Historical simulation complete. Final P/L: ${result.finalPnL.toFixed(2)}`, 'success');
+        } catch (error) {
+            addLog(`Historical simulation failed: ${(error as Error).message}`, 'error');
+        } finally {
+            setIsHistoricalRunning(false);
+        }
+    }, [addLog, selectedExpiry, strategy, instrument, lots, stopLossPoints, targetPoints, maxLossLimit, strangleDistance]);
+
 
     const fetchData = useCallback(async (isManual = false) => {
         if (isManual) {
@@ -578,10 +620,17 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                         />
                     </div>
                 </div>
-                 <div className="flex justify-end mt-4">
+                 <div className="flex justify-end mt-4 space-x-4">
+                     <button
+                        onClick={handleRunHistorical}
+                        disabled={isRunning || isHistoricalRunning || !instrument || !strategy || !selectedExpiry}
+                        className="px-6 py-2 rounded-md font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-transform transform hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed disabled:scale-100"
+                     >
+                        {isHistoricalRunning ? 'Simulating...' : 'Run Historical'}
+                     </button>
                      <button 
                         onClick={handleStartStop}
-                        disabled={isStoppingBot || botStatus === BotStatus.MAX_LOSS_REACHED || !instrument || !strategy || !selectedExpiry}
+                        disabled={isStoppingBot || isHistoricalRunning || botStatus === BotStatus.MAX_LOSS_REACHED || !instrument || !strategy || !selectedExpiry}
                         className={`px-6 py-2 rounded-md font-semibold text-white transition-transform transform hover:scale-105 ${
                             isRunning 
                                 ? (confirmingStopBot ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700') 
@@ -592,6 +641,12 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                      </button>
                 </div>
             </div>
+
+            {historicalResult && (
+                <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6">
+                    <HistoricalPLChart data={historicalResult} onClear={() => setHistoricalResult(null)} />
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 bg-slate-800 p-4 rounded-lg border border-slate-700">

@@ -1,4 +1,5 @@
 
+
 export enum Instrument {
   NIFTY = 'NIFTY',
   BANKNIFTY = 'BANKNIFTY',
@@ -126,4 +127,16 @@ export interface ChargesBreakdown {
   stampDuty: number;
   gst: number;
   total: number;
+}
+
+export interface HistoricalPnlPoint {
+  timestamp: string; // e.g., "09:15:00"
+  pnl: number;
+}
+
+export interface HistoricalRunResult {
+  executionId: string;
+  finalPnL: number;
+  pnlData: HistoricalPnlPoint[];
+  message: string;
 }

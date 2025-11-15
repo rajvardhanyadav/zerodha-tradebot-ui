@@ -2,7 +2,7 @@
  * This service acts as the API client for the trading bot backend.
  * It implements the API specification provided, handling authentication and data fetching.
  */
-import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, DayPNL, OrderCharge } from '../types';
+import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, DayPNL, OrderCharge, HistoricalRunResult } from '../types';
 
 //const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
 const BASE_URL = 'http://localhost:8080/api';
@@ -103,6 +103,14 @@ export const executeStrategy = (params: any): Promise<any> => apiFetch('/strateg
 });
 
 export const getActiveStrategies = (): Promise<StrategyPosition[]> => apiFetch('/strategies/active');
+
+
+// --- Historical Replay API ---
+export const executeHistoricalStrategy = (params: any): Promise<HistoricalRunResult> => apiFetch('/historical/execute', {
+    method: 'POST',
+    body: JSON.stringify(params),
+});
+
 
 // --- Portfolio & Order APIs ---
 export const getOrders = (): Promise<Order[]> => apiFetch('/orders');
