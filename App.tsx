@@ -4,17 +4,20 @@ import Dashboard from './components/Dashboard';
 import Callback from './components/Callback';
 import * as api from './services/kiteConnect';
 
-const getInitialToken = (): string | null => {
+const getInitialAuth = (): { token: string | null; userId: string | null } => {
   try {
-    return localStorage.getItem('jwtToken');
+    return {
+      token: localStorage.getItem('jwtToken'),
+      userId: localStorage.getItem('userId'),
+    };
   } catch (e) {
     console.error("Could not access localStorage:", e);
-    return null;
+    return { token: null, userId: null };
   }
 };
 
 const App: React.FC = () => {
-  const [jwtToken, setJwtToken] = useState<string | null>(getInitialToken());
+  const [auth, setAuth] = useState(getInitialAuth());
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,29 +26,31 @@ const App: React.FC = () => {
     document.documentElement.classList.add('dark');
   }, []);
 
-  const safeSetToken = useCallback((token: string) => {
+  const safeSetAuth = useCallback((token: string, userId: string) => {
     try {
         localStorage.setItem('jwtToken', token);
-        setJwtToken(token);
+        localStorage.setItem('userId', userId);
+        setAuth({ token, userId });
     } catch(e) {
         console.error("Could not set item in localStorage:", e);
         setError("Your browser is not allowing storage access, which is required to log in.");
     }
   }, []);
 
-  const safeRemoveToken = useCallback(() => {
+  const safeRemoveAuth = useCallback(() => {
       try {
           localStorage.removeItem('jwtToken');
+          localStorage.removeItem('userId');
       } catch (e) {
           console.error("Could not remove item from localStorage:", e);
       }
-      setJwtToken(null);
+      setAuth({ token: null, userId: null });
   }, []);
 
-  const handleAuthSuccess = useCallback((token: string) => {
-    safeSetToken(token);
+  const handleAuthSuccess = useCallback((token: string, userId: string) => {
+    safeSetAuth(token, userId);
     window.history.replaceState({}, document.title, '/');
-  }, [safeSetToken]);
+  }, [safeSetAuth]);
 
   const handleAuthError = useCallback((errorMsg: string) => {
     setError(errorMsg);
@@ -59,7 +64,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogout = () => {
-    safeRemoveToken();
+    safeRemoveAuth();
   };
   
   if (window.location.pathname === '/callback') {
@@ -83,7 +88,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 font-sans text-slate-200">
-      {jwtToken ? <Dashboard onLogout={handleLogout} /> : <LoginScreen onAuthSuccess={handleAuthSuccess} />}
+      {auth.token && auth.userId ? <Dashboard onLogout={handleLogout} /> : <LoginScreen onAuthSuccess={handleAuthSuccess} />}
     </div>
   );
 };

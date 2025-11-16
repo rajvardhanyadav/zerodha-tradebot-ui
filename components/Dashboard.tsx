@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, DayPNL, ChargesBreakdown, HistoricalRunResult } from '../types';
+import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult } from '../types';
 import * as tradingService from '../services/tradingService';
 import * as api from '../services/kiteConnect';
 import StatCard from './StatCard';
@@ -36,7 +36,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [expiries, setExpiries] = useState<string[]>([]);
     const [selectedExpiry, setSelectedExpiry] = useState<string>('');
     const [totalPL, setTotalPL] = useState<number>(0);
-    const [chargesBreakdown, setChargesBreakdown] = useState<ChargesBreakdown>({ brokerage: 0, stt: 0, exchange: 0, sebi: 0, stampDuty: 0, gst: 0, total: 0 });
     const [activeStrategies, setActiveStrategies] = useState<StrategyPosition[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [positions, setPositions] = useState<Position[]>([]);
@@ -60,6 +59,9 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [isOrdersLoading, setIsOrdersLoading] = useState<boolean>(false);
     const [historicalResult, setHistoricalResult] = useState<HistoricalRunResult | null>(null);
     const [isHistoricalRunning, setIsHistoricalRunning] = useState<boolean>(false);
+    const [tradingMode, setTradingMode] = useState<'PAPER_TRADING' | 'LIVE_TRADING' | null>(null);
+    const [isSwitchingMode, setIsSwitchingMode] = useState<boolean>(false);
+    const [confirmingSwitchMode, setConfirmingSwitchMode] = useState<boolean>(false);
 
 
     const addLog = useCallback((message: string, type: TradeLog['type']) => {
@@ -77,6 +79,19 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         }
         return () => clearTimeout(timer);
     }, [confirmingStopBot, addLog]);
+    
+    // Timeout for mode switch confirmation
+    useEffect(() => {
+        let timer: number | undefined;
+        if (confirmingSwitchMode) {
+            const targetMode = tradingMode === 'LIVE_TRADING' ? 'PAPER' : 'LIVE';
+            addLog(`Click again within 5 seconds to confirm switch to ${targetMode} mode.`, 'warning');
+            timer = window.setTimeout(() => {
+                setConfirmingSwitchMode(false);
+            }, 5000);
+        }
+        return () => clearTimeout(timer);
+    }, [confirmingSwitchMode, tradingMode, addLog]);
 
     // Timeout for stop monitor confirmation
     useEffect(() => {
@@ -117,11 +132,19 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         const loadInitialData = async () => {
             try {
                 addLog('Loading configurations & user profile...', 'info');
-                const [fetchedStrategies, fetchedInstruments, profile] = await Promise.all([
+                const [fetchedStrategies, fetchedInstruments, profile, modeStatus] = await Promise.all([
                     api.getStrategyTypes(),
                     api.getTradeableInstruments(),
                     api.getUserProfile(),
+                    api.getTradingModeStatus(),
                 ]);
+
+                if (modeStatus) {
+                    setTradingMode(modeStatus.mode);
+                    addLog(`Trading mode is ${modeStatus.mode.replace('_', ' ')}.`, 'info');
+                } else {
+                    addLog(`Could not fetch trading mode.`, 'warning');
+                }
 
                 setUserProfile(profile);
                 const implementedStrategies = fetchedStrategies.filter(s => s.implemented);
@@ -178,35 +201,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         loadExpiriesAndLtp();
     }, [instrument, instruments, addLog]);
     
-    // Fetch data for the active tab (Positions or Orders)
-    useEffect(() => {
-        const fetchTabData = async () => {
-            if (activeTab === 'positions') {
-                setIsPositionsLoading(true);
-                try {
-                    const fetchedPositions = await api.getPositions();
-                    setPositions(fetchedPositions);
-                } catch (e) {
-                    addLog(`Failed to fetch positions: ${(e as Error).message}`, 'error');
-                } finally {
-                    setIsPositionsLoading(false);
-                }
-            } else if (activeTab === 'orders') {
-                setIsOrdersLoading(true);
-                try {
-                    const fetchedOrders = await api.getOrders();
-                    setOrders(fetchedOrders);
-                } catch (e) {
-                    addLog(`Failed to fetch orders: ${(e as Error).message}`, 'error');
-                } finally {
-                    setIsOrdersLoading(false);
-                }
-            }
-        };
-
-        fetchTabData();
-    }, [activeTab, addLog]);
-
     const executeStrategy = useCallback(async () => {
         if (totalPL <= -maxLossLimit) {
             setBotStatus(BotStatus.MAX_LOSS_REACHED);
@@ -229,10 +223,10 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             stopLossPoints,
             targetPoints,
             maxLossLimit,
-            strikeGap: strategy === StrategyType.OTM_STRANGLE ? strangleDistance : undefined,
+            strikeGap: strategy === StrategyType.ATM_STRANGLE ? strangleDistance : undefined,
         };
 
-        if (strategy === StrategyType.OTM_STRANGLE) {
+        if (strategy === StrategyType.ATM_STRANGLE) {
             if (strangleDistance <= 0) {
                 addLog(`Strangle distance must be positive.`, 'error');
                 return;
@@ -240,7 +234,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         }
 
         const strategyDesc = strategy.replace(/_/g, ' ');
-        const fullDesc = strategy === StrategyType.OTM_STRANGLE ? `${strategyDesc} (${strangleDistance} pts)` : strategyDesc;
+        const fullDesc = strategy === StrategyType.ATM_STRANGLE ? `${strategyDesc} (${strangleDistance} pts)` : strategyDesc;
         addLog(`Executing: ${fullDesc} on ${instrument} for ${selectedExpiry} expiry with ${lots} lot(s).`, 'info');
 
         try {
@@ -265,10 +259,10 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             stopLossPoints,
             targetPoints,
             maxLossLimit,
-            strikeGap: strategy === StrategyType.OTM_STRANGLE ? strangleDistance : undefined,
+            strikeGap: strategy === StrategyType.ATM_STRANGLE ? strangleDistance : undefined,
         };
         
-        if (strategy === StrategyType.OTM_STRANGLE && strangleDistance <= 0) {
+        if (strategy === StrategyType.ATM_STRANGLE && strangleDistance <= 0) {
             addLog(`Strangle distance must be positive.`, 'error');
             return;
         }
@@ -296,41 +290,36 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         }
     
         try {
-            const selectedInstrumentObject = instruments.find(i => i.code === instrument);
-            if (!selectedInstrumentObject) return;
-    
-            const [fetchedStrategies, currentLtp, monitorStatus, dayPnl, orderCharges] = await Promise.all([
+            const promises: Promise<any>[] = [
                 tradingService.getActiveStrategies(),
-                api.getLTP(selectedInstrumentObject.name),
                 api.getMonitoringStatus(),
-                api.getTotalDayPNL(),
-                api.getOrderCharges(),
-            ]);
+                api.getPositions(),
+                api.getOrders(),
+            ];
+
+            const selectedInstrumentObject = instruments.find(i => i.code === instrument);
+            if (selectedInstrumentObject) {
+                promises.push(api.getLTP(selectedInstrumentObject.name));
+            }
+
+            const [
+                fetchedStrategies,
+                monitorStatus,
+                fetchedPositions,
+                fetchedOrders,
+                currentLtp,
+            ] = await Promise.all(promises);
             
-            setLtp(prevLtp => (currentLtp !== prevLtp ? currentLtp : prevLtp));
+            if (currentLtp !== undefined) {
+                setLtp(prevLtp => (currentLtp !== prevLtp ? currentLtp : prevLtp));
+            }
             setActiveStrategies(prev => JSON.stringify(prev) !== JSON.stringify(fetchedStrategies) ? fetchedStrategies : prev);
             setMonitoringStatus(prev => JSON.stringify(prev) !== JSON.stringify(monitorStatus) ? monitorStatus : prev);
-
-            const totalBreakdown = (orderCharges && Array.isArray(orderCharges))
-                ? orderCharges.reduce((acc, item) => {
-                    const c = item.charges;
-                    if (c) {
-                        acc.brokerage += c.brokerage ?? 0;
-                        acc.stt += c.transactionTax ?? 0;
-                        acc.exchange += c.exchangeTurnoverCharge ?? 0;
-                        acc.sebi += c.sebiTurnoverCharge ?? 0;
-                        acc.stampDuty += c.stampDuty ?? 0;
-                        acc.gst += c.gst?.total ?? 0;
-                        acc.total += c.total ?? 0;
-                    }
-                    return acc;
-                }, { brokerage: 0, stt: 0, exchange: 0, sebi: 0, stampDuty: 0, gst: 0, total: 0 })
-                : { brokerage: 0, stt: 0, exchange: 0, sebi: 0, stampDuty: 0, gst: 0, total: 0 };
-            
-            setChargesBreakdown(prev => JSON.stringify(prev) !== JSON.stringify(totalBreakdown) ? totalBreakdown : prev);
+            setPositions(prev => JSON.stringify(prev) !== JSON.stringify(fetchedPositions) ? fetchedPositions : prev);
+            setOrders(prev => JSON.stringify(prev) !== JSON.stringify(fetchedOrders) ? fetchedOrders : prev);
     
-            if (dayPnl) {
-                const currentGrossPL = dayPnl.totalDayPnL;
+            if (fetchedPositions) {
+                const currentGrossPL = fetchedPositions.reduce((sum: number, pos: Position) => sum + (pos.pnl || 0), 0);
                 setTotalPL(prevPL => prevPL !== currentGrossPL ? currentGrossPL : prevPL);
                  
                 if (botStatus === BotStatus.RUNNING && currentGrossPL <= -maxLossLimit) {
@@ -345,7 +334,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             }
     
         } catch(e) {
-            addLog(`Error in main loop: ${(e as Error).message}`, 'error');
+            addLog(`Error refreshing data: ${(e as Error).message}`, 'error');
             if ((e as Error).message.includes('Unauthorized')) {
                 addLog('Session expired. Please log in again.', 'error');
                 onLogout();
@@ -359,16 +348,13 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     
     // Main background loop for fetching data silently
     useEffect(() => {
-        if (!instrument || instruments.length === 0 || !isAutoRefreshEnabled) {
-            return;
-        }
+        if (!isAutoRefreshEnabled) return;
 
         fetchData(); // Initial fetch
-        
-        const timer = setInterval(fetchData, 10000); 
+        const timer = setInterval(() => fetchData(), 10000); 
 
         return () => clearInterval(timer);
-    }, [isAutoRefreshEnabled, fetchData, instrument, instruments.length]);
+    }, [isAutoRefreshEnabled, fetchData]);
     
     const handleStopMonitoring = async (executionId: string) => {
         if (confirmingStopMonitorId === executionId) {
@@ -388,6 +374,33 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         } else {
             setConfirmingStopMonitorId(executionId);
             setConfirmingStopBot(false);
+        }
+    };
+    
+    const handleModeSwitch = async () => {
+        if (isSwitchingMode || !tradingMode) return;
+
+        if (confirmingSwitchMode) {
+            setIsSwitchingMode(true);
+            setConfirmingSwitchMode(false);
+            const targetModeIsPaper = tradingMode === 'LIVE_TRADING';
+            const targetModeString = targetModeIsPaper ? 'Paper' : 'Live';
+
+            addLog(`Switching to ${targetModeString} Trading mode...`, 'info');
+
+            try {
+                const result = await api.setTradingMode(targetModeIsPaper);
+                setTradingMode(result.mode);
+                addLog(`Successfully switched to ${result.mode.replace('_', ' ')} mode.`, 'success');
+            } catch (e) {
+                addLog(`Failed to switch trading mode: ${(e as Error).message}`, 'error');
+            } finally {
+                setIsSwitchingMode(false);
+            }
+        } else {
+            setConfirmingSwitchMode(true);
+            setConfirmingStopBot(false);
+            setConfirmingStopMonitorId(null);
         }
     };
 
@@ -416,7 +429,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         } else if (botStatus === BotStatus.STOPPED || botStatus === BotStatus.INACTIVE) {
             setBotStatus(BotStatus.RUNNING);
             const strategyDesc = strategy.replace(/_/g, ' ');
-            const fullDesc = strategy === StrategyType.OTM_STRANGLE 
+            const fullDesc = strategy === StrategyType.ATM_STRANGLE 
                 ? `${strategyDesc} (${strangleDistance} pts)` 
                 : strategyDesc;
             addLog(`Bot started for ${instrument} (${selectedExpiry}) with strategy: ${fullDesc}.`, 'success');
@@ -437,7 +450,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     
     // Effect to update strangle distance when instrument or strategy changes
     useEffect(() => {
-        if (strategy === StrategyType.OTM_STRANGLE) {
+        if (strategy === StrategyType.ATM_STRANGLE) {
             setStrangleDistance(strikeInterval);
         }
     }, [instrument, strategy, strikeInterval]);
@@ -460,6 +473,28 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                     </div>
                 </div>
                 <div className="flex items-center space-x-4 mt-4 md:mt-0">
+                    {tradingMode && (
+                        <button
+                            onClick={handleModeSwitch}
+                            disabled={isSwitchingMode}
+                             className={`px-3 py-1.5 text-sm rounded-md font-semibold text-white transition-colors disabled:bg-slate-700 disabled:cursor-wait ${
+                                isSwitchingMode
+                                    ? 'bg-slate-600 animate-pulse'
+                                    : confirmingSwitchMode
+                                    ? 'bg-orange-500 hover:bg-orange-600'
+                                    : tradingMode === 'PAPER_TRADING'
+                                    ? 'bg-profit/80 hover:bg-profit'
+                                    : 'bg-loss/80 hover:bg-loss'
+                            }`}
+                        >
+                             {isSwitchingMode
+                                ? 'Switching...'
+                                : confirmingSwitchMode
+                                ? `Confirm ${tradingMode === 'PAPER_TRADING' ? 'Live' : 'Paper'}?`
+                                : `Mode: ${tradingMode === 'PAPER_TRADING' ? 'Paper' : 'Live'}`
+                            }
+                        </button>
+                    )}
                     <div className="flex items-center space-x-2">
                         <label htmlFor="auto-refresh-toggle" className="text-sm text-slate-400 cursor-pointer">Auto-Refresh</label>
                         <button
@@ -494,7 +529,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 </div>
             </header>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <StatCard icon="status" title="Bot Status" value={botStatus} status={botStatus} />
                 <StatCard 
                     icon="monitoring"
@@ -505,8 +540,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 />
                 <StatCard icon="ltp" title={`${instrument || 'Index'} LTP`} value={isLtpLoading ? ltpLoadingDots : (ltp > 0 ? ltp.toFixed(2) : '...')} />
                 <StatCard icon="gross-pl" title="Gross P/L" value={totalPL.toFixed(2)} isCurrency={true} isPL={true} />
-                <StatCard icon="charges" title="Charges" value={chargesBreakdown.total.toFixed(2)} isCurrency={true} breakdown={chargesBreakdown} />
-                <StatCard icon="net-pl" title="Net P/L" value={(totalPL - chargesBreakdown.total).toFixed(2)} isCurrency={true} isPL={true} />
             </div>
 
             <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6">
@@ -560,7 +593,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                         </select>
                     </div>
 
-                    {strategy === StrategyType.OTM_STRANGLE && (
+                    {strategy === StrategyType.ATM_STRANGLE && (
                         <div>
                             <label htmlFor="strangle-distance" className="block text-xs font-medium text-slate-400 mb-1">Strangle Distance (pts)</label>
                             <input

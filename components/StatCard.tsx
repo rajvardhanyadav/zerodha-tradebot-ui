@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { BotStatus, ChargesBreakdown } from '../types';
+import { BotStatus } from '../types';
 
 interface StatCardProps {
   title: string;
@@ -9,7 +9,6 @@ interface StatCardProps {
   isCurrency?: boolean;
   isPL?: boolean;
   status?: BotStatus;
-  breakdown?: ChargesBreakdown;
   icon: 'status' | 'monitoring' | 'ltp' | 'gross-pl' | 'charges' | 'net-pl';
 }
 
@@ -49,7 +48,7 @@ const StatCardIcon: React.FC<{ icon: StatCardProps['icon'] }> = ({ icon }) => {
     return <div className="p-3 bg-slate-700 rounded-full text-slate-400">{icons[icon]}</div>;
 };
 
-const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, isCurrency, isPL, status, breakdown, icon }) => {
+const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, isCurrency, isPL, status, icon }) => {
   let valueColor = 'text-slate-200';
   if (isPL) {
     const numericValue = Number(value);
@@ -66,24 +65,6 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, isCurrency,
 
   const formattedValue = isCurrency ? `₹${value}` : value;
 
-  const renderBreakdownTooltip = () => {
-    if (!breakdown || breakdown.total === 0) return null;
-    return (
-      <div className="absolute z-10 bottom-full mb-2 w-52 p-3 bg-slate-900 border border-slate-700 rounded-lg shadow-xl text-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none text-slate-200">
-        <h4 className="font-bold text-sm mb-2 border-b border-slate-700 pb-1">Charges Breakdown</h4>
-        <div className="space-y-1">
-          <div className="flex justify-between"><span>Brokerage:</span> <span className="font-mono">₹{breakdown.brokerage.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span>STT:</span> <span className="font-mono">₹{breakdown.stt.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span>Exchange Fees:</span> <span className="font-mono">₹{breakdown.exchange.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span>SEBI Fees:</span> <span className="font-mono">₹{breakdown.sebi.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span>Stamp Duty:</span> <span className="font-mono">₹{breakdown.stampDuty.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span>GST:</span> <span className="font-mono">₹{breakdown.gst.toFixed(2)}</span></div>
-        </div>
-      </div>
-    );
-  };
-
-
   return (
     <div className="relative group bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center space-x-4">
       <StatCardIcon icon={icon} />
@@ -92,7 +73,6 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, isCurrency,
         <p className={`text-xl font-bold ${valueColor}`}>{formattedValue}</p>
         {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
       </div>
-      {renderBreakdownTooltip()}
     </div>
   );
 };

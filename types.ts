@@ -16,8 +16,6 @@ export enum BotStatus {
 export enum StrategyType {
   ATM_STRADDLE = 'ATM_STRADDLE',
   ATM_STRANGLE = 'ATM_STRANGLE',
-  // FIX: Add OTM_STRANGLE to support the logic in Dashboard.tsx
-  OTM_STRANGLE = 'OTM_STRANGLE',
 }
 
 export interface ApiStrategyType {
@@ -56,6 +54,7 @@ export interface TradeLog {
 
 export interface UserProfile {
   userName: string;
+  userId: string;
 }
 
 export interface MonitoringStatus {
@@ -89,46 +88,6 @@ export interface Position {
   sellValue: number;
 }
 
-export interface DayPNL {
-  totalRealised: number;
-  totalUnrealised: number;
-  totalM2M: number;
-  totalDayPnL: number;
-  positionCount: number;
-  tradingMode: string;
-}
-
-export interface ChargeDetails {
-  transactionTax: number;
-  transactionTaxType: string;
-  exchangeTurnoverCharge: number;
-  sebiTurnoverCharge: number;
-  brokerage: number;
-  stampDuty: number;
-  gst: {
-    igst: number;
-    cgst: number;
-    sgst: number;
-    total: number;
-  };
-  total: number;
-}
-
-export interface OrderCharge {
-  orderId: string;
-  charges: ChargeDetails;
-}
-
-export interface ChargesBreakdown {
-  brokerage: number;
-  stt: number;
-  exchange: number;
-  sebi: number;
-  stampDuty: number;
-  gst: number;
-  total: number;
-}
-
 export interface HistoricalPnlPoint {
   timestamp: string; // e.g., "09:15:00"
   pnl: number;
@@ -139,4 +98,11 @@ export interface HistoricalRunResult {
   finalPnL: number;
   pnlData: HistoricalPnlPoint[];
   message: string;
+}
+
+export interface TradingModeStatus {
+  paperTradingEnabled: boolean;
+  mode: 'PAPER_TRADING' | 'LIVE_TRADING';
+  description: string;
+  message?: string;
 }

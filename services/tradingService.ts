@@ -23,7 +23,8 @@ export const runStrategy = async (params: ExecuteStrategyParams): Promise<any> =
         maxLossLimit: params.maxLossLimit,
     };
 
-    if (params.strategyType === StrategyType.OTM_STRANGLE && params.strikeGap) {
+    // FIX: Corrected typo from OTM_STRANGLE to ATM_STRANGLE to match the StrategyType enum.
+    if (params.strategyType === StrategyType.ATM_STRANGLE && params.strikeGap) {
         apiParams.strikeGap = params.strikeGap;
     }
     

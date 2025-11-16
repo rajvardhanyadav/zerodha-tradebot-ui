@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import * as api from '../services/kiteConnect';
 
 interface LoginScreenProps {
-    onAuthSuccess: (token: string) => void;
+    onAuthSuccess: (token: string, userId: string) => void;
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthSuccess }) => {
@@ -35,7 +35,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthSuccess }) => {
     setError('');
     try {
         const response = await api.exchangeToken(requestToken.trim());
-        onAuthSuccess(response.jwtToken);
+        onAuthSuccess(response.jwtToken, response.userId);
         // On success, the component will unmount, so no need to reset loading state
     } catch (err) {
         setError('Invalid request token or server error. Please try again.');
