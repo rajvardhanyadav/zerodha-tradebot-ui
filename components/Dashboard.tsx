@@ -1,9 +1,9 @@
 
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult } from '../types';
+import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult, OrderCharge } from '../types';
 import * as tradingService from '../services/tradingService';
-import * as api from '../services/kiteConnect';
+import * as api from './../services/kiteConnect';
 import StatCard from './StatCard';
 import ActiveStrategiesTable from './ActiveStrategiesTable';
 import PositionsTable from './PositionsTable';
@@ -36,6 +36,8 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [expiries, setExpiries] = useState<string[]>([]);
     const [selectedExpiry, setSelectedExpiry] = useState<string>('');
     const [totalPL, setTotalPL] = useState<number>(0);
+    const [totalCharges, setTotalCharges] = useState<number>(0);
+    const [netPL, setNetPL] = useState<number>(0);
     const [activeStrategies, setActiveStrategies] = useState<StrategyPosition[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [positions, setPositions] = useState<Position[]>([]);
@@ -295,6 +297,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 api.getMonitoringStatus(),
                 api.getPositions(),
                 api.getOrders(),
+                api.getOrderCharges(),
             ];
 
             const selectedInstrumentObject = instruments.find(i => i.code === instrument);
@@ -307,6 +310,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 monitorStatus,
                 fetchedPositions,
                 fetchedOrders,
+                fetchedCharges,
                 currentLtp,
             ] = await Promise.all(promises);
             
@@ -318,8 +322,9 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             setPositions(prev => JSON.stringify(prev) !== JSON.stringify(fetchedPositions) ? fetchedPositions : prev);
             setOrders(prev => JSON.stringify(prev) !== JSON.stringify(fetchedOrders) ? fetchedOrders : prev);
     
+            let currentGrossPL = totalPL;
             if (fetchedPositions) {
-                const currentGrossPL = fetchedPositions.reduce((sum: number, pos: Position) => sum + (pos.pnl || 0), 0);
+                currentGrossPL = fetchedPositions.reduce((sum: number, pos: Position) => sum + (pos.pnl || 0), 0);
                 setTotalPL(prevPL => prevPL !== currentGrossPL ? currentGrossPL : prevPL);
                  
                 if (botStatus === BotStatus.RUNNING && currentGrossPL <= -maxLossLimit) {
@@ -328,6 +333,15 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                     addLog('Note: Positions must be closed manually.', 'warning');
                 }
             }
+
+            let currentTotalCharges = totalCharges;
+            if (fetchedCharges) {
+                currentTotalCharges = fetchedCharges.reduce((sum: number, charge: OrderCharge) => sum + (charge.charges?.total || 0), 0);
+                setTotalCharges(prevCharges => prevCharges !== currentTotalCharges ? currentTotalCharges : prevCharges);
+            }
+            
+            const currentNetPL = currentGrossPL - currentTotalCharges;
+            setNetPL(prevNetPL => prevNetPL !== currentNetPL ? currentNetPL : prevNetPL);
 
             if (isManual) {
                 addLog('Manual refresh complete.', 'success');
@@ -344,7 +358,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 setIsManualRefreshing(false);
             }
         }
-    }, [botStatus, instrument, instruments, addLog, onLogout, maxLossLimit]);
+    }, [botStatus, instrument, instruments, addLog, onLogout, maxLossLimit, totalPL, totalCharges]);
     
     // Main background loop for fetching data silently
     useEffect(() => {
@@ -529,7 +543,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 </div>
             </header>
 
-            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
                 <StatCard icon="status" title="Bot Status" value={botStatus} status={botStatus} />
                 <StatCard 
                     icon="monitoring"
@@ -540,6 +554,8 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 />
                 <StatCard icon="ltp" title={`${instrument || 'Index'} LTP`} value={isLtpLoading ? ltpLoadingDots : (ltp > 0 ? ltp.toFixed(2) : '...')} />
                 <StatCard icon="gross-pl" title="Gross P/L" value={totalPL.toFixed(2)} isCurrency={true} isPL={true} />
+                <StatCard icon="charges" title="Charges" value={totalCharges.toFixed(2)} isCurrency={true} />
+                <StatCard icon="net-pl" title="Net P/L" value={netPL.toFixed(2)} isCurrency={true} isPL={true} />
             </div>
 
             <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6">

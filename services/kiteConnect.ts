@@ -2,7 +2,7 @@
  * This service acts as the API client for the trading bot backend.
  * It implements the API specification provided, handling authentication and data fetching.
  */
-import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult, TradingModeStatus } from '../types';
+import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult, TradingModeStatus, OrderCharge } from '../types';
 
 //const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
 const BASE_URL = 'http://localhost:8080/api';
@@ -121,9 +121,18 @@ export const getOrders = (): Promise<Order[]> => apiFetch('/orders');
 
 export const getPositions = async (): Promise<Position[]> => {
     const response = await apiFetch<{ net: Position[], day: Position[] }>('/portfolio/positions');
-    // Use 'day' positions to get a complete view of the day's P/L, including squared-off positions.
-    return response.day ?? [];
+    // The API provides 'day' and 'net' positions. 'day' includes squared-off positions.
+    // Some modes (like paper trading) might only populate 'net' and leave 'day' empty.
+    // To handle this, we prioritize 'day' but fallback to 'net' if 'day' is empty.
+    if (response && response.day && response.day.length > 0) {
+        return response.day;
+    }
+    // If 'day' is empty or doesn't exist, use 'net'. If response is null, return empty array.
+    return response?.net ?? [];
 };
+
+// GET /api/orders/charges
+export const getOrderCharges = (): Promise<OrderCharge[]> => apiFetch('/orders/charges');
 
 
 // --- Position Monitoring APIs ---

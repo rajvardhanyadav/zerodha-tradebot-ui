@@ -106,3 +106,29 @@ export interface TradingModeStatus {
   description: string;
   message?: string;
 }
+
+export interface OrderCharge {
+    transactionType: "BUY" | "SELL";
+    tradingsymbol: string;
+    exchange: string;
+    variety: string;
+    product: string;
+    orderType: string;
+    quantity: number;
+    price: number;
+    charges: {
+        transactionTax: number;
+        transactionTaxType: string;
+        exchangeTurnoverCharge: number;
+        sebiTurnoverCharge: number;
+        brokerage: number;
+        stampDuty: number;
+        gst: {
+            igst: number;
+            cgst: number;
+            sgst: number;
+            total: number;
+        };
+        total: number;
+    };
+}
