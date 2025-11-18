@@ -12,7 +12,12 @@ interface StatCardProps {
   icon: 'status' | 'monitoring' | 'ltp' | 'gross-pl' | 'charges' | 'net-pl';
 }
 
-const StatCardIcon: React.FC<{ icon: StatCardProps['icon'] }> = ({ icon }) => {
+interface IconProps {
+    icon: StatCardProps['icon'];
+    className?: string;
+}
+
+const StatCardIcon: React.FC<IconProps> = ({ icon, className }) => {
     const icons: Record<StatCardProps['icon'], React.ReactNode> = {
         status: (
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
@@ -45,21 +50,40 @@ const StatCardIcon: React.FC<{ icon: StatCardProps['icon'] }> = ({ icon }) => {
             </svg>
         ),
     };
-    return <div className="p-3 bg-slate-700 rounded-full text-slate-400">{icons[icon]}</div>;
+    return <div className={`p-3 rounded-full ${className}`}>{icons[icon]}</div>;
 };
 
 const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, isCurrency, isPL, status, icon }) => {
   let valueColor = 'text-slate-200';
+  let iconClass = 'bg-slate-700 text-slate-400';
+
   if (isPL) {
     const numericValue = Number(value);
-    if (numericValue > 0) valueColor = 'text-profit';
-    if (numericValue < 0) valueColor = 'text-loss';
+    if (numericValue > 0) {
+        valueColor = 'text-profit';
+    } else if (numericValue < 0) {
+        valueColor = 'text-loss';
+    }
   } else if (status) {
     switch(status) {
-        case BotStatus.RUNNING: valueColor = 'text-profit'; break;
-        case BotStatus.STOPPED: valueColor = 'text-loss'; break;
-        case BotStatus.INACTIVE: valueColor = 'text-yellow-500'; break;
-        case BotStatus.MAX_LOSS_REACHED: valueColor = 'text-red-700 font-bold'; break;
+        case BotStatus.RUNNING: 
+            valueColor = 'text-green-500'; 
+            iconClass = 'bg-green-500/20 text-green-500';
+            break;
+        case BotStatus.STOPPED: 
+            valueColor = 'text-red-500'; 
+            iconClass = 'bg-red-500/20 text-red-500';
+            break;
+        case BotStatus.INACTIVE: 
+            valueColor = 'text-yellow-500'; 
+            iconClass = 'bg-yellow-500/20 text-yellow-500';
+            break;
+        case BotStatus.MAX_LOSS_REACHED: 
+            valueColor = 'text-red-700 font-bold'; 
+            iconClass = 'bg-red-900/30 text-red-700';
+            break;
+        default:
+            break;
     }
   }
 
@@ -67,7 +91,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, isCurrency,
 
   return (
     <div className="relative group bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center space-x-4">
-      <StatCardIcon icon={icon} />
+      <StatCardIcon icon={icon} className={iconClass} />
       <div className="flex-1 min-w-0">
         <h3 className="text-sm font-medium text-slate-400">{title}</h3>
         <p className={`text-xl font-bold ${valueColor}`}>{formattedValue}</p>

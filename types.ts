@@ -132,3 +132,8 @@ export interface OrderCharge {
         total: number;
     };
 }
+
+export interface BotStatusResponse {
+    status: 'RUNNING' | 'STOPPED';
+    lastUpdated: string;
+}

@@ -1,7 +1,6 @@
 
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult, OrderCharge } from '../types';
+import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult, OrderCharge, BotStatusResponse } from '../types';
 import * as tradingService from '../services/tradingService';
 import * as api from './../services/kiteConnect';
 import StatCard from './StatCard';
@@ -54,6 +53,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [isStoppingBot, setIsStoppingBot] = useState<boolean>(false);
     const [activeTab, setActiveTab] = useState<'strategies' | 'positions' | 'orders'>('strategies');
     const [confirmingStopBot, setConfirmingStopBot] = useState<boolean>(false);
+    const [confirmingStartBot, setConfirmingStartBot] = useState<boolean>(false);
     const [confirmingStopMonitorId, setConfirmingStopMonitorId] = useState<string | null>(null);
     const [isAutoRefreshEnabled, setIsAutoRefreshEnabled] = useState<boolean>(true);
     const [isManualRefreshing, setIsManualRefreshing] = useState<boolean>(false);
@@ -64,6 +64,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [tradingMode, setTradingMode] = useState<'PAPER_TRADING' | 'LIVE_TRADING' | null>(null);
     const [isSwitchingMode, setIsSwitchingMode] = useState<boolean>(false);
     const [confirmingSwitchMode, setConfirmingSwitchMode] = useState<boolean>(false);
+    const [confirmingLogout, setConfirmingLogout] = useState<boolean>(false);
 
 
     const addLog = useCallback((message: string, type: TradeLog['type']) => {
@@ -81,6 +82,18 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         }
         return () => clearTimeout(timer);
     }, [confirmingStopBot, addLog]);
+
+    // Timeout for start bot confirmation
+    useEffect(() => {
+        let timer: number | undefined;
+        if (confirmingStartBot) {
+            addLog('Click "Start Bot" again within 5 seconds to confirm.', 'warning');
+            timer = window.setTimeout(() => {
+                setConfirmingStartBot(false);
+            }, 5000);
+        }
+        return () => clearTimeout(timer);
+    }, [confirmingStartBot, addLog]);
     
     // Timeout for mode switch confirmation
     useEffect(() => {
@@ -106,6 +119,17 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         }
         return () => clearTimeout(timer);
     }, [confirmingStopMonitorId, addLog]);
+
+    // Timeout for logout confirmation
+    useEffect(() => {
+        let timer: number | undefined;
+        if (confirmingLogout) {
+            timer = window.setTimeout(() => {
+                setConfirmingLogout(false);
+            }, 5000);
+        }
+        return () => clearTimeout(timer);
+    }, [confirmingLogout]);
 
 
     // Effect for loading animation dots
@@ -242,6 +266,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         try {
             const result = await tradingService.runStrategy(params);
             addLog(`Strategy execution request sent successfully. Message: ${result.message}`, 'success');
+            setBotStatus(BotStatus.RUNNING); // Optimistically set to running, next poll will confirm
         } catch (error) {
             addLog(`Failed to execute strategy: ${(error as Error).message}`, 'error');
         }
@@ -298,6 +323,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 api.getPositions(),
                 api.getOrders(),
                 api.getOrderCharges(),
+                api.getBotStatus(), // Fetch bot status
             ];
 
             const selectedInstrumentObject = instruments.find(i => i.code === instrument);
@@ -305,14 +331,15 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 promises.push(api.getLTP(selectedInstrumentObject.name));
             }
 
-            const [
-                fetchedStrategies,
-                monitorStatus,
-                fetchedPositions,
-                fetchedOrders,
-                fetchedCharges,
-                currentLtp,
-            ] = await Promise.all(promises);
+            const results = await Promise.all(promises);
+            
+            const fetchedStrategies = results[0] as StrategyPosition[];
+            const monitorStatus = results[1] as MonitoringStatus;
+            const fetchedPositions = results[2] as Position[];
+            const fetchedOrders = results[3] as Order[];
+            const fetchedCharges = results[4] as OrderCharge[];
+            const fetchedBotStatus = results[5] as BotStatusResponse;
+            const currentLtp = results.length > 6 ? results[6] as number : undefined;
             
             if (currentLtp !== undefined) {
                 setLtp(prevLtp => (currentLtp !== prevLtp ? currentLtp : prevLtp));
@@ -326,12 +353,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             if (fetchedPositions) {
                 currentGrossPL = fetchedPositions.reduce((sum: number, pos: Position) => sum + (pos.pnl || 0), 0);
                 setTotalPL(prevPL => prevPL !== currentGrossPL ? currentGrossPL : prevPL);
-                 
-                if (botStatus === BotStatus.RUNNING && currentGrossPL <= -maxLossLimit) {
-                    setBotStatus(BotStatus.MAX_LOSS_REACHED);
-                    addLog(`Max daily loss of ${maxLossLimit} reached. Bot stopped.`, 'error');
-                    addLog('Note: Positions must be closed manually.', 'warning');
-                }
             }
 
             let currentTotalCharges = totalCharges;
@@ -342,6 +363,21 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             
             const currentNetPL = currentGrossPL - currentTotalCharges;
             setNetPL(prevNetPL => prevNetPL !== currentNetPL ? currentNetPL : prevNetPL);
+
+            // Update Bot Status based on API + Max Loss Logic
+            if (fetchedBotStatus) {
+                let newStatus = fetchedBotStatus.status === 'RUNNING' ? BotStatus.RUNNING : BotStatus.STOPPED;
+                
+                // Override status if Max Loss is reached locally while bot is running
+                if (newStatus === BotStatus.RUNNING && currentGrossPL <= -maxLossLimit) {
+                    newStatus = BotStatus.MAX_LOSS_REACHED;
+                    // Log error if we are transitioning into this state
+                    if (botStatus !== BotStatus.MAX_LOSS_REACHED) {
+                        addLog(`Max daily loss of ${maxLossLimit} reached. Bot status forced to STOPPED locally.`, 'error');
+                    }
+                }
+                setBotStatus(newStatus);
+            }
 
             if (isManual) {
                 addLog('Manual refresh complete.', 'success');
@@ -388,6 +424,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         } else {
             setConfirmingStopMonitorId(executionId);
             setConfirmingStopBot(false);
+            setConfirmingStartBot(false);
         }
     };
     
@@ -414,6 +451,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         } else {
             setConfirmingSwitchMode(true);
             setConfirmingStopBot(false);
+            setConfirmingStartBot(false);
             setConfirmingStopMonitorId(null);
         }
     };
@@ -428,9 +466,8 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 try {
                     const response = await tradingService.stopAllStrategies();
                     addLog(response.message, 'success');
+                    // Status update will happen in next fetchData poll or we can optimistically set it
                     setBotStatus(BotStatus.STOPPED);
-                    const strategies = await tradingService.getActiveStrategies();
-                    setActiveStrategies(strategies);
                 } catch (e) {
                     addLog(`Failed to stop bot: ${(e as Error).message}`, 'error');
                 } finally {
@@ -438,17 +475,29 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 }
             } else {
                 setConfirmingStopBot(true);
+                setConfirmingStartBot(false);
                 setConfirmingStopMonitorId(null);
+                setConfirmingSwitchMode(false);
+                setConfirmingLogout(false);
             }
         } else if (botStatus === BotStatus.STOPPED || botStatus === BotStatus.INACTIVE) {
-            setBotStatus(BotStatus.RUNNING);
-            const strategyDesc = strategy.replace(/_/g, ' ');
-            const fullDesc = strategy === StrategyType.ATM_STRANGLE 
-                ? `${strategyDesc} (${strangleDistance} pts)` 
-                : strategyDesc;
-            addLog(`Bot started for ${instrument} (${selectedExpiry}) with strategy: ${fullDesc}.`, 'success');
-            
-            await executeStrategy();
+            if (confirmingStartBot) {
+                // Optimistic update; executeStrategy will confirm or fetchData will sync
+                setConfirmingStartBot(false);
+                const strategyDesc = strategy.replace(/_/g, ' ');
+                const fullDesc = strategy === StrategyType.ATM_STRANGLE 
+                    ? `${strategyDesc} (${strangleDistance} pts)` 
+                    : strategyDesc;
+                addLog(`Starting bot for ${instrument} (${selectedExpiry}) with strategy: ${fullDesc}.`, 'info');
+                
+                await executeStrategy();
+            } else {
+                setConfirmingStartBot(true);
+                setConfirmingStopBot(false);
+                setConfirmingStopMonitorId(null);
+                setConfirmingSwitchMode(false);
+                setConfirmingLogout(false);
+            }
         }
     };
     
@@ -537,8 +586,22 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                             {isManualRefreshing ? 'Refreshing...' : 'Refresh Now'}
                         </button>
                     )}
-                    <button onClick={onLogout} className="px-4 py-2 rounded-md font-semibold text-white bg-slate-700 hover:bg-slate-600">
-                        Logout
+                    <button 
+                        onClick={() => {
+                            if (confirmingLogout) {
+                                onLogout();
+                            } else {
+                                setConfirmingLogout(true);
+                                setConfirmingStartBot(false);
+                                setConfirmingStopBot(false);
+                                setConfirmingSwitchMode(false);
+                            }
+                        }} 
+                        className={`px-4 py-2 rounded-md font-semibold text-white transition-colors ${
+                            confirmingLogout ? 'bg-orange-600 hover:bg-orange-700' : 'bg-slate-700 hover:bg-slate-600'
+                        }`}
+                    >
+                        {confirmingLogout ? 'Confirm Logout?' : 'Logout'}
                     </button>
                 </div>
             </header>
@@ -683,10 +746,13 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                         className={`px-6 py-2 rounded-md font-semibold text-white transition-transform transform hover:scale-105 ${
                             isRunning 
                                 ? (confirmingStopBot ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700') 
-                                : 'bg-green-600 hover:bg-green-700'
+                                : (confirmingStartBot ? 'bg-green-700 hover:bg-green-800' : 'bg-green-600 hover:bg-green-700')
                         } disabled:bg-gray-500 disabled:cursor-not-allowed disabled:scale-100`}
                      >
-                        {isRunning ? (isStoppingBot ? 'Stopping...' : (confirmingStopBot ? 'Confirm Stop?' : 'Stop Bot')) : 'Start Bot'}
+                        {isRunning 
+                            ? (isStoppingBot ? 'Stopping...' : (confirmingStopBot ? 'Confirm Stop?' : 'Stop Bot')) 
+                            : (confirmingStartBot ? 'Confirm Start?' : 'Start Bot')
+                        }
                      </button>
                 </div>
             </div>
