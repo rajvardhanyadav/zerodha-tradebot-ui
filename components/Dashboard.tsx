@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult, OrderCharge, BotStatusResponse } from '../types';
 import * as tradingService from '../services/tradingService';
@@ -26,7 +28,7 @@ const TabButton: React.FC<{ title: string; isActive: boolean; onClick: () => voi
 const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [botStatus, setBotStatus] = useState<BotStatus>(BotStatus.STOPPED);
     const [instrument, setInstrument] = useState<Instrument | ''>('');
-    const [strategy, setStrategy] = useState<StrategyType | ''>('');
+    const [strategy, setStrategy] = useState<string>('');
     const [strangleDistance, setStrangleDistance] = useState<number>(100);
     const [lots, setLots] = useState<number>(1);
     const [stopLossPoints, setStopLossPoints] = useState<number>(10);
@@ -173,12 +175,13 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 }
 
                 setUserProfile(profile);
-                const implementedStrategies = fetchedStrategies.filter(s => s.implemented);
-                setStrategyTypes(implementedStrategies);
+                // Display all strategies returned by the API
+                const availableStrategies = fetchedStrategies;
+                setStrategyTypes(availableStrategies);
                 setInstruments(fetchedInstruments);
 
-                if (implementedStrategies.length > 0) {
-                    setStrategy(implementedStrategies[0].name as StrategyType);
+                if (availableStrategies.length > 0) {
+                    setStrategy(availableStrategies[0].name);
                 }
                 if (fetchedInstruments.length > 0) {
                     setInstrument(fetchedInstruments[0].code as Instrument);
@@ -629,7 +632,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                          <select 
                             id="strategy-select"
                             value={strategy}
-                            onChange={(e) => setStrategy(e.target.value as StrategyType)}
+                            onChange={(e) => setStrategy(e.target.value)}
                             disabled={isRunning}
                             className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
                          >

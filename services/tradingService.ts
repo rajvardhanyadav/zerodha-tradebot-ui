@@ -1,8 +1,9 @@
+
 import { Instrument, StrategyType, StrategyPosition } from '../types';
 import * as api from './kiteConnect';
 
 interface ExecuteStrategyParams {
-  strategyType: StrategyType;
+  strategyType: string;
   instrumentType: Instrument;
   expiry: string; // e.g., "WEEKLY", "MONTHLY", or "2024-11-28"
   strikeGap?: number;

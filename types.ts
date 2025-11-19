@@ -1,5 +1,6 @@
 
 
+
 export enum Instrument {
   NIFTY = 'NIFTY',
   BANKNIFTY = 'BANKNIFTY',
@@ -13,10 +14,12 @@ export enum BotStatus {
   MAX_LOSS_REACHED = 'MAX_LOSS_REACHED',
 }
 
-export enum StrategyType {
-  ATM_STRADDLE = 'ATM_STRADDLE',
-  ATM_STRANGLE = 'ATM_STRANGLE',
-}
+export const StrategyType = {
+  ATM_STRADDLE: 'ATM_STRADDLE',
+  ATM_STRANGLE: 'ATM_STRANGLE',
+} as const;
+
+export type StrategyType = string;
 
 export interface ApiStrategyType {
   name: string;
