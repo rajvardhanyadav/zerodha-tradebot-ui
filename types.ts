@@ -1,6 +1,7 @@
 
 
 
+
 export enum Instrument {
   NIFTY = 'NIFTY',
   BANKNIFTY = 'BANKNIFTY',
@@ -34,6 +35,24 @@ export interface ApiInstrument {
   strikeInterval: number;
 }
 
+export interface OrderLeg {
+    orderId: string;
+    tradingSymbol: string;
+    optionType: string;
+    quantity: number;
+    entryPrice: number;
+    entryTransactionType: string;
+    entryTimestamp: number;
+    lifecycleState: string;
+    exitOrderId?: string;
+    exitTransactionType?: string;
+    exitQuantity?: number;
+    exitPrice?: number;
+    exitTimestamp?: number;
+    exitStatus?: string;
+    realizedPnl?: number;
+}
+
 // New type for active strategies from the /api/strategies/active endpoint
 export interface StrategyPosition {
   executionId: string;
@@ -42,10 +61,11 @@ export interface StrategyPosition {
   expiry: string;
   status: string;
   message: string;
-  entryPrice: number;
-  currentPrice: number;
-  profitLoss: number;
+  entryPrice: number | null;
+  currentPrice: number | null;
+  profitLoss: number | null;
   timestamp: number;
+  orderLegs?: OrderLeg[];
 }
 
 

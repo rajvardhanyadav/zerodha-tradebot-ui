@@ -120,6 +120,12 @@ export const executeHistoricalStrategy = (params: any): Promise<HistoricalRunRes
     body: JSON.stringify(params),
 });
 
+// --- Backtest API ---
+export const executeBacktest = (params: any): Promise<HistoricalRunResult> => apiFetch('/backtest/execute', {
+    method: 'POST',
+    body: JSON.stringify(params),
+});
+
 
 // --- Portfolio & Order APIs ---
 export const getOrders = (): Promise<Order[]> => apiFetch('/orders');
