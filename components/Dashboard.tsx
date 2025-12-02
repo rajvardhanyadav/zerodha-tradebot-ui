@@ -391,7 +391,18 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     
             let currentGrossPL = totalPL;
             if (fetchedPositions) {
-                currentGrossPL = fetchedPositions.reduce((sum: number, pos: Position) => sum + (pos.pnl || 0), 0);
+                currentGrossPL = fetchedPositions.reduce((sum: number, pos: Position) => {
+                    // Calculate PnL manually: (Sell Value - Buy Value) + (Net Quantity * Last Price)
+                    // This ensures accuracy even if the 'pnl' field from API is delayed or incorrect
+                    
+                    // Fallback if necessary fields are missing or LTP is 0 for open positions
+                    if (pos.sellValue === undefined || pos.buyValue === undefined || (pos.lastPrice === 0 && pos.netQuantity !== 0)) {
+                        return sum + (pos.pnl || 0);
+                    }
+                    
+                    const pnl = (pos.sellValue - pos.buyValue) + (pos.netQuantity * pos.lastPrice);
+                    return sum + pnl;
+                }, 0);
                 setTotalPL(prevPL => prevPL !== currentGrossPL ? currentGrossPL : prevPL);
             }
 

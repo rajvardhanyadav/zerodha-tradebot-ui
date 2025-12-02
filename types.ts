@@ -65,6 +65,8 @@ export interface StrategyPosition {
   currentPrice: number | null;
   profitLoss: number | null;
   timestamp: number;
+  entryTimestamp?: number;
+  exitTimestamp?: number;
   orderLegs?: OrderLeg[];
 }
 

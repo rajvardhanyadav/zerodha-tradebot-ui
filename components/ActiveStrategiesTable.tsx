@@ -9,11 +9,24 @@ interface ActiveStrategiesTableProps {
   confirmingStopMonitorId: string | null;
 }
 
+const formatTime = (timestamp?: number) => {
+  if (!timestamp) return '-';
+  // Heuristic: if timestamp is small (e.g. < 10000000000), assume seconds and multiply by 1000
+  const time = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+  return new Date(time).toLocaleTimeString();
+};
+
 const ActiveStrategiesTable: React.FC<ActiveStrategiesTableProps> = ({ strategies, onStopMonitoring, stoppingMonitorId, confirmingStopMonitorId }) => {
 
   if (strategies.length === 0) {
     return <div className="text-center py-10 text-slate-400">No active strategies.</div>;
   }
+
+  const sortedStrategies = [...strategies].sort((a, b) => {
+    const timeA = a.entryTimestamp || a.timestamp || 0;
+    const timeB = b.entryTimestamp || b.timestamp || 0;
+    return timeB - timeA;
+  });
 
   return (
     <div className="overflow-x-auto">
@@ -23,6 +36,8 @@ const ActiveStrategiesTable: React.FC<ActiveStrategiesTableProps> = ({ strategie
           <tr>
             <th className="p-2 text-sm text-slate-400">Strategy</th>
             <th className="p-2 text-sm text-slate-400">Instrument</th>
+            <th className="p-2 text-sm text-slate-400">Entry Time</th>
+            <th className="p-2 text-sm text-slate-400">Exit Time</th>
             <th className="p-2 text-sm text-slate-400 text-right">Entry Value</th>
             <th className="p-2 text-sm text-slate-400 text-right">Current Value</th>
             <th className="p-2 text-sm text-slate-400 text-right">P/L</th>
@@ -31,13 +46,14 @@ const ActiveStrategiesTable: React.FC<ActiveStrategiesTableProps> = ({ strategie
           </tr>
         </thead>
         <tbody>
-          {strategies.map((s) => {
+          {sortedStrategies.map((s) => {
             const isStopping = stoppingMonitorId === s.executionId;
             const isConfirming = confirmingStopMonitorId === s.executionId;
 
             let displayEntry = s.entryPrice ?? 0;
             let displayCurrent = s.currentPrice ?? 0;
             let displayPL = s.profitLoss ?? 0;
+            let displayExitTimestamp = s.exitTimestamp;
 
             if (s.orderLegs && s.orderLegs.length > 0) {
                  if (s.entryPrice === null || s.entryPrice === undefined) {
@@ -52,6 +68,14 @@ const ActiveStrategiesTable: React.FC<ActiveStrategiesTableProps> = ({ strategie
                      if (s.profitLoss === null || s.profitLoss === undefined) {
                         displayPL = s.orderLegs.reduce((sum, leg) => sum + (leg.realizedPnl || 0), 0);
                      }
+                     if (!displayExitTimestamp) {
+                        const exitTimestamps = s.orderLegs
+                            .map(leg => leg.exitTimestamp)
+                            .filter((ts): ts is number => ts !== undefined && ts !== null);
+                        if (exitTimestamps.length > 0) {
+                            displayExitTimestamp = Math.max(...exitTimestamps);
+                        }
+                     }
                  }
             }
 
@@ -61,6 +85,8 @@ const ActiveStrategiesTable: React.FC<ActiveStrategiesTableProps> = ({ strategie
                   {s.strategyType.replace(/_/g, ' ')}
                 </td>
                 <td className="p-2 font-mono">{s.instrumentType} ({s.expiry})</td>
+                <td className="p-2 font-mono text-sm">{formatTime(s.entryTimestamp || s.timestamp)}</td>
+                <td className="p-2 font-mono text-sm">{formatTime(displayExitTimestamp)}</td>
                 <td className="p-2 font-mono text-right">{displayEntry.toFixed(2)}</td>
                 <td className="p-2 font-mono text-right">{displayCurrent.toFixed(2)}</td>
                 <td className={`p-2 font-mono text-right font-semibold ${displayPL >= 0 ? 'text-profit' : 'text-loss'}`}>
