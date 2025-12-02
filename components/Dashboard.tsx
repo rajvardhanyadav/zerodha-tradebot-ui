@@ -29,8 +29,8 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [strategy, setStrategy] = useState<string>('');
     const [strangleDistance, setStrangleDistance] = useState<number>(100);
     const [lots, setLots] = useState<number>(1);
-    const [stopLossPoints, setStopLossPoints] = useState<number>(10);
-    const [targetPoints, setTargetPoints] = useState<number>(15);
+    const [stopLossPoints, setStopLossPoints] = useState<number>(5);
+    const [targetPoints, setTargetPoints] = useState<number>(5);
     const [maxLossLimit, setMaxLossLimit] = useState<number>(3000);
     const [expiries, setExpiries] = useState<string[]>([]);
     const [selectedExpiry, setSelectedExpiry] = useState<string>('');
