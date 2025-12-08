@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, OrderCharge, BotStatusResponse } from '../types';
 import * as tradingService from '../services/tradingService';
 import * as api from './../services/kiteConnect';
+import { subscribeToApiLogs } from './../services/kiteConnect';
 import StatCard from './StatCard';
 import ActiveStrategiesTable from './ActiveStrategiesTable';
 import PositionsTable from './PositionsTable';
@@ -69,6 +70,18 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
 
     const addLog = useCallback((message: string, type: TradeLog['type']) => {
         setTradeLog(prev => [{ timestamp: new Date().toLocaleTimeString(), message, type }, ...prev].slice(0, 100));
+    }, []);
+
+    // Subscribe to API logs for streaming backend call information
+    useEffect(() => {
+        const unsubscribe = subscribeToApiLogs((logEntry) => {
+            setTradeLog(prev => [{ 
+                timestamp: logEntry.timestamp, 
+                message: logEntry.message, 
+                type: logEntry.type 
+            }, ...prev].slice(0, 100));
+        });
+        return unsubscribe;
     }, []);
     
     // Timeout for stop bot confirmation
@@ -160,7 +173,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
 
         const loadInitialData = async () => {
             try {
-                addLog('Loading configurations & user profile...', 'info');
                 const [fetchedStrategies, fetchedInstruments, profile, modeStatus] = await Promise.all([
                     api.getStrategyTypes(),
                     api.getTradeableInstruments(),
@@ -170,9 +182,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
 
                 if (modeStatus) {
                     setTradingMode(modeStatus.mode);
-                    addLog(`Trading mode is ${modeStatus.mode.replace('_', ' ')}.`, 'info');
-                } else {
-                    addLog(`Could not fetch trading mode.`, 'warning');
                 }
 
                 setUserProfile(profile);
@@ -189,7 +198,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 }
                  addLog(`Welcome, ${profile.userName}. Configurations loaded.`, 'success');
             } catch (e) {
-                addLog(`Failed to load initial data: ${(e as Error).message}`, 'error');
+                // Error is logged by API logger
             }
         };
         loadInitialData();
@@ -204,7 +213,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             if (expiriesLoadedForInstrumentRef.current === instrument) return;
             expiriesLoadedForInstrumentRef.current = instrument;
             
-            addLog(`Fetching expiries and latest price for ${instrument}...`, 'info');
             setExpiries([]);
             setSelectedExpiry('');
             setIsLtpLoading(true);
@@ -216,9 +224,8 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 setExpiries(fetchedExpiries);
                 if (fetchedExpiries.length > 0) {
                     setSelectedExpiry(fetchedExpiries[0]);
-                    addLog(`Expiries loaded successfully for ${instrument}.`, 'success');
                 } else {
-                    addLog(`Could not find any expiries for ${instrument}`, 'warning');
+                    addLog(`No expiries found for ${instrument}`, 'warning');
                 }
 
                 const selectedInstrumentObject = instruments.find(i => i.code === instrument);
@@ -227,7 +234,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                     setLtp(currentLtp);
                 }
             } catch (e) {
-                 addLog(`Failed to fetch expiries for ${instrument}: ${(e as Error).message}`, 'error');
+                // Error is logged by API logger
             } finally {
                 setIsLtpLoading(false);
             }
@@ -273,17 +280,15 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
 
         try {
             const result = await tradingService.runStrategy(params);
-            addLog(`Strategy execution request sent successfully. Message: ${result.message}`, 'success');
             setBotStatus(BotStatus.RUNNING); // Optimistically set to running, next poll will confirm
         } catch (error) {
-            addLog(`Failed to execute strategy: ${(error as Error).message}`, 'error');
+            // Error is logged by API logger
         }
     }, [instrument, addLog, totalPL, selectedExpiry, strategy, strangleDistance, lots, stopLossPoints, targetPoints, maxLossLimit]);
     
     const fetchData = useCallback(async (isManual = false) => {
         if (isManual) {
             setIsManualRefreshing(true);
-            addLog('Manually refreshing data...', 'info');
         }
     
         try {
@@ -319,22 +324,24 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             setPositions(prev => JSON.stringify(prev) !== JSON.stringify(fetchedPositions) ? fetchedPositions : prev);
             setOrders(prev => JSON.stringify(prev) !== JSON.stringify(fetchedOrders) ? fetchedOrders : prev);
     
-            let currentGrossPL = totalPL;
-            if (fetchedPositions) {
-                currentGrossPL = fetchedPositions.reduce((sum: number, pos: Position) => {
-                    // Calculate PnL manually: (Sell Value - Buy Value) + (Net Quantity * Last Price)
-                    // This ensures accuracy even if the 'pnl' field from API is delayed or incorrect
-                    
-                    // Fallback if necessary fields are missing or LTP is 0 for open positions
-                    if (pos.sellValue === undefined || pos.buyValue === undefined || (pos.lastPrice === 0 && pos.netQuantity !== 0)) {
-                        return sum + (pos.pnl || 0);
-                    }
-                    
-                    const pnl = (pos.sellValue - pos.buyValue) + (pos.netQuantity * pos.lastPrice);
-                    return sum + pnl;
-                }, 0);
-                setTotalPL(prevPL => prevPL !== currentGrossPL ? currentGrossPL : prevPL);
+            // Calculate P/L from strategies API - only for COMPLETED strategies (not ACTIVE ones)
+            let currentGrossPL = 0;
+            if (fetchedStrategies && fetchedStrategies.length > 0) {
+                const completedStatuses = ['COMPLETED', 'STOPPED', 'MAX_LOSS_REACHED'];
+                currentGrossPL = fetchedStrategies
+                    .filter((strategy: StrategyPosition) => completedStatuses.includes(strategy.status.toUpperCase()))
+                    .reduce((sum: number, strategy: StrategyPosition) => {
+                        let strategyPL = strategy.profitLoss ?? 0;
+                        
+                        // If profitLoss is not set, calculate from orderLegs
+                        if ((strategy.profitLoss === null || strategy.profitLoss === undefined) && strategy.orderLegs) {
+                            strategyPL = strategy.orderLegs.reduce((legSum, leg) => legSum + (leg.realizedPnl || 0), 0);
+                        }
+                        
+                        return sum + strategyPL;
+                    }, 0);
             }
+            setTotalPL(prevPL => prevPL !== currentGrossPL ? currentGrossPL : prevPL);
 
             let currentTotalCharges = totalCharges;
             if (fetchedCharges) {
@@ -361,11 +368,11 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             }
 
             if (isManual) {
-                addLog('Manual refresh complete.', 'success');
+                addLog('Data refreshed.', 'success');
             }
     
         } catch(e) {
-            addLog(`Error refreshing data: ${(e as Error).message}`, 'error');
+            // API errors are logged by API logger
             if ((e as Error).message.includes('Unauthorized')) {
                 addLog('Session expired. Please log in again.', 'error');
                 onLogout();
@@ -389,16 +396,14 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     
     const handleStopMonitoring = async (executionId: string) => {
         if (confirmingStopMonitorId === executionId) {
-            addLog(`Requesting to stop monitoring for ${executionId}...`, 'info');
             setStoppingMonitorId(executionId);
             setConfirmingStopMonitorId(null); // Reset confirmation
             try {
-                const message = await api.stopMonitoringExecution(executionId);
-                addLog(message, 'success');
+                await api.stopMonitoringExecution(executionId);
                 const strategies = await tradingService.getActiveStrategies();
                 setActiveStrategies(strategies);
             } catch (e) {
-                addLog(`Failed to stop monitoring: ${(e as Error).message}`, 'error');
+                // Error is logged by API logger
             } finally {
                 setStoppingMonitorId(null);
             }
@@ -416,16 +421,12 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             setIsSwitchingMode(true);
             setConfirmingSwitchMode(false);
             const targetModeIsPaper = tradingMode === 'LIVE_TRADING';
-            const targetModeString = targetModeIsPaper ? 'Paper' : 'Live';
-
-            addLog(`Switching to ${targetModeString} Trading mode...`, 'info');
 
             try {
                 const result = await api.setTradingMode(targetModeIsPaper);
                 setTradingMode(result.mode);
-                addLog(`Successfully switched to ${result.mode.replace('_', ' ')} mode.`, 'success');
             } catch (e) {
-                addLog(`Failed to switch trading mode: ${(e as Error).message}`, 'error');
+                // Error is logged by API logger
             } finally {
                 setIsSwitchingMode(false);
             }
@@ -443,14 +444,12 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             if (confirmingStopBot) {
                 setIsStoppingBot(true);
                 setConfirmingStopBot(false);
-                addLog('Requesting to stop all strategies...', 'info');
                 try {
-                    const response = await tradingService.stopAllStrategies();
-                    addLog(response.message, 'success');
+                    await tradingService.stopAllStrategies();
                     // Status update will happen in next fetchData poll or we can optimistically set it
                     setBotStatus(BotStatus.STOPPED);
                 } catch (e) {
-                    addLog(`Failed to stop bot: ${(e as Error).message}`, 'error');
+                    // Error is logged by API logger
                 } finally {
                     setIsStoppingBot(false);
                 }

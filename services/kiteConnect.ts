@@ -3,17 +3,78 @@
  * This service acts as the API client for the trading bot backend.
  * It implements the API specification provided, handling authentication and data fetching.
  */
-import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult, TradingModeStatus, OrderCharge, BotStatusResponse } from '../types';
+import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, TradingModeStatus, OrderCharge, BotStatusResponse } from '../types';
 
 //const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
 const BASE_URL = 'http://localhost:8080/api';
+
+// --- API Logger ---
+export type ApiLogType = 'info' | 'success' | 'error' | 'warning';
+export interface ApiLogEntry {
+    timestamp: string;
+    message: string;
+    type: ApiLogType;
+    endpoint?: string;
+    method?: string;
+    data?: any;
+}
+
+type ApiLogListener = (log: ApiLogEntry) => void;
+const apiLogListeners: Set<ApiLogListener> = new Set();
+
+export const subscribeToApiLogs = (listener: ApiLogListener): (() => void) => {
+    apiLogListeners.add(listener);
+    return () => apiLogListeners.delete(listener);
+};
+
+const emitApiLog = (log: Omit<ApiLogEntry, 'timestamp'>) => {
+    const entry: ApiLogEntry = {
+        ...log,
+        timestamp: new Date().toLocaleTimeString(),
+    };
+    apiLogListeners.forEach(listener => listener(entry));
+};
 //const BASE_URL = 'https://zerodhabot-genai-3-874874921792.asia-south2.run.app/api';
 
 // --- Helper Functions ---
+const getEndpointDescription = (endpoint: string, method: string): string => {
+    const descriptions: Record<string, string> = {
+        'GET /auth/login-url': 'Fetching login URL',
+        'POST /auth/session': 'Exchanging token for session',
+        'GET /auth/profile': 'Fetching user profile',
+        'GET /market/ltp': 'Fetching LTP',
+        'GET /strategies/types': 'Loading strategy types',
+        'GET /strategies/instruments': 'Loading tradeable instruments',
+        'GET /strategies/expiries': 'Fetching expiries',
+        'POST /strategies/execute': 'Executing strategy',
+        'GET /strategies/active': 'Fetching active strategies',
+        'GET /strategies/bot-status': 'Checking bot status',
+        'DELETE /strategies/stop-all': 'Stopping all strategies',
+        'GET /orders': 'Fetching orders',
+        'GET /orders/charges': 'Fetching order charges',
+        'GET /portfolio/positions': 'Fetching positions',
+        'GET /monitoring/status': 'Checking monitoring status',
+        'DELETE /monitoring': 'Stopping monitor',
+        'GET /paper-trading/status': 'Checking trading mode',
+        'POST /paper-trading/mode': 'Switching trading mode',
+    };
+    
+    // Find matching description
+    const key = `${method} ${endpoint.split('?')[0]}`;
+    for (const [pattern, desc] of Object.entries(descriptions)) {
+        if (key.startsWith(pattern.replace(/\/\{.*\}/, ''))) {
+            return desc;
+        }
+    }
+    return `API call to ${endpoint}`;
+};
+
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const token = localStorage.getItem('jwtToken');
     const userId = localStorage.getItem('userId');
     const headers: Record<string, string> = {};
+    const method = options.method || 'GET';
+    const description = getEndpointDescription(endpoint, method);
 
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
@@ -28,32 +89,95 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
          headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(`${BASE_URL}${endpoint}`, { 
-        ...options, 
-        headers: {...headers, ...options.headers} 
+    // Log request
+    const requestBody = options.body ? JSON.parse(options.body as string) : undefined;
+    emitApiLog({
+        type: 'info',
+        message: `${description}...`,
+        endpoint,
+        method,
+        data: requestBody,
     });
 
-    // Handle cases with no content in response body
-    if (response.status === 204 || response.headers.get('content-length') === '0') {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return null as T;
-    }
-    
-    const data = await response.json();
+    try {
+        const response = await fetch(`${BASE_URL}${endpoint}`, { 
+            ...options, 
+            headers: {...headers, ...options.headers} 
+        });
 
-    if (!response.ok || (data.hasOwnProperty('success') && !data.success)) {
-        const errorMessage = data.message || `HTTP error! status: ${response.status}`;
-        console.error(`API Error on ${endpoint}:`, errorMessage, data);
-        if (response.status === 401) {
-            throw new Error('Unauthorized');
+        // Handle cases with no content in response body
+        if (response.status === 204 || response.headers.get('content-length') === '0') {
+            if (!response.ok) {
+                emitApiLog({
+                    type: 'error',
+                    message: `${description} failed: HTTP ${response.status}`,
+                    endpoint,
+                    method,
+                });
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            emitApiLog({
+                type: 'success',
+                message: `${description} completed`,
+                endpoint,
+                method,
+            });
+            return null as T;
         }
-        throw new Error(errorMessage);
-    }
+        
+        const data = await response.json();
 
-    // The new API nests the actual data inside a 'data' property
-    return data.data;
+        if (!response.ok || (data.hasOwnProperty('success') && !data.success)) {
+            const errorMessage = data.message || `HTTP error! status: ${response.status}`;
+            console.error(`API Error on ${endpoint}:`, errorMessage, data);
+            emitApiLog({
+                type: 'error',
+                message: `${description} failed: ${errorMessage}`,
+                endpoint,
+                method,
+                data: data,
+            });
+            if (response.status === 401) {
+                throw new Error('Unauthorized');
+            }
+            throw new Error(errorMessage);
+        }
+
+        // Log success with relevant response summary
+        const responseData = data.data;
+        let successMessage = `${description} completed`;
+        
+        // Add context-specific details to success message
+        if (Array.isArray(responseData)) {
+            successMessage += ` (${responseData.length} items)`;
+        } else if (responseData && typeof responseData === 'object') {
+            if (responseData.message) {
+                successMessage += `: ${responseData.message}`;
+            }
+        }
+        
+        emitApiLog({
+            type: 'success',
+            message: successMessage,
+            endpoint,
+            method,
+        });
+
+        // The new API nests the actual data inside a 'data' property
+        return responseData;
+    } catch (error) {
+        // Log network or parsing errors
+        const errorMessage = (error as Error).message;
+        if (!errorMessage.includes('failed:')) { // Avoid duplicate logging
+            emitApiLog({
+                type: 'error',
+                message: `${description} failed: ${errorMessage}`,
+                endpoint,
+                method,
+            });
+        }
+        throw error;
+    }
 }
 
 // --- Authentication ---
