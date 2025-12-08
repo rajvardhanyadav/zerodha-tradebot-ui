@@ -6,8 +6,8 @@
 import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult, TradingModeStatus, OrderCharge, BotStatusResponse } from '../types';
 
 //const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
-//const BASE_URL = 'http://localhost:8080/api';
-const BASE_URL = 'https://zerodhabot-genai-3-874874921792.asia-south2.run.app/api';
+const BASE_URL = 'http://localhost:8080/api';
+//const BASE_URL = 'https://zerodhabot-genai-3-874874921792.asia-south2.run.app/api';
 
 // --- Helper Functions ---
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

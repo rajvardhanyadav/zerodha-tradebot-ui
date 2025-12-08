@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, HistoricalRunResult, OrderCharge, BotStatusResponse } from '../types';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, OrderCharge, BotStatusResponse } from '../types';
 import * as tradingService from '../services/tradingService';
 import * as api from './../services/kiteConnect';
 import StatCard from './StatCard';
@@ -8,7 +8,6 @@ import ActiveStrategiesTable from './ActiveStrategiesTable';
 import PositionsTable from './PositionsTable';
 import OrdersTable from './OrdersTable';
 import TradeLogView from './TradeLogView';
-import HistoricalPLChart from './HistoricalPLChart';
 
 const TabButton: React.FC<{ title: string; isActive: boolean; onClick: () => void }> = ({ title, isActive, onClick }) => (
     <button
@@ -59,15 +58,14 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [isManualRefreshing, setIsManualRefreshing] = useState<boolean>(false);
     const [isPositionsLoading, setIsPositionsLoading] = useState<boolean>(false);
     const [isOrdersLoading, setIsOrdersLoading] = useState<boolean>(false);
-    const [historicalResult, setHistoricalResult] = useState<HistoricalRunResult | null>(null);
-    const [isHistoricalRunning, setIsHistoricalRunning] = useState<boolean>(false);
-    const [isBacktesting, setIsBacktesting] = useState<boolean>(false);
-    const [backtestDate, setBacktestDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [tradingMode, setTradingMode] = useState<'PAPER_TRADING' | 'LIVE_TRADING' | null>(null);
     const [isSwitchingMode, setIsSwitchingMode] = useState<boolean>(false);
     const [confirmingSwitchMode, setConfirmingSwitchMode] = useState<boolean>(false);
     const [confirmingLogout, setConfirmingLogout] = useState<boolean>(false);
 
+    // Refs to prevent duplicate API calls during initial load
+    const initialDataLoadedRef = useRef<boolean>(false);
+    const expiriesLoadedForInstrumentRef = useRef<string>('');
 
     const addLog = useCallback((message: string, type: TradeLog['type']) => {
         setTradeLog(prev => [{ timestamp: new Date().toLocaleTimeString(), message, type }, ...prev].slice(0, 100));
@@ -157,6 +155,9 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
 
     // Effect for loading initial config data
     useEffect(() => {
+        if (initialDataLoadedRef.current) return;
+        initialDataLoadedRef.current = true;
+
         const loadInitialData = async () => {
             try {
                 addLog('Loading configurations & user profile...', 'info');
@@ -198,6 +199,10 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     useEffect(() => {
         const loadExpiriesAndLtp = async () => {
             if (!instrument || instruments.length === 0) return;
+            
+            // Skip if we already loaded expiries for this instrument
+            if (expiriesLoadedForInstrumentRef.current === instrument) return;
+            expiriesLoadedForInstrumentRef.current = instrument;
             
             addLog(`Fetching expiries and latest price for ${instrument}...`, 'info');
             setExpiries([]);
@@ -275,81 +280,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         }
     }, [instrument, addLog, totalPL, selectedExpiry, strategy, strangleDistance, lots, stopLossPoints, targetPoints, maxLossLimit]);
     
-    const handleRunHistorical = useCallback(async () => {
-        if (!selectedExpiry || !strategy || !instrument) {
-            addLog('Strategy, instrument, or expiry not selected. Cannot run simulation.', 'error');
-            return;
-        }
-
-        const params = {
-            strategyType: strategy,
-            instrumentType: instrument,
-            expiry: selectedExpiry,
-            lots: lots,
-            stopLossPoints,
-            targetPoints,
-            maxLossLimit,
-            strikeGap: strategy === StrategyType.ATM_STRANGLE ? strangleDistance : undefined,
-        };
-        
-        if (strategy === StrategyType.ATM_STRANGLE && strangleDistance <= 0) {
-            addLog(`Strangle distance must be positive.`, 'error');
-            return;
-        }
-
-        setIsHistoricalRunning(true);
-        setHistoricalResult(null);
-        addLog('Starting historical simulation...', 'info');
-
-        try {
-            const result = await api.executeHistoricalStrategy(params);
-            setHistoricalResult(result);
-            addLog(`Historical simulation complete. Final P/L: ${result.finalPnL.toFixed(2)}`, 'success');
-        } catch (error) {
-            addLog(`Historical simulation failed: ${(error as Error).message}`, 'error');
-        } finally {
-            setIsHistoricalRunning(false);
-        }
-    }, [addLog, selectedExpiry, strategy, instrument, lots, stopLossPoints, targetPoints, maxLossLimit, strangleDistance]);
-
-    const handleRunBacktest = useCallback(async () => {
-        if (!strategy || !instrument) {
-            addLog('Strategy and instrument are required for backtesting.', 'error');
-            return;
-        }
-        
-        const params = {
-            strategyType: strategy,
-            instrumentType: instrument,
-            expiry: selectedExpiry, // Can be generic 'WEEKLY'
-            lots: lots,
-            stopLossPoints,
-            targetPoints,
-            maxLossLimit,
-            strikeGap: strategy === StrategyType.ATM_STRANGLE ? strangleDistance : undefined,
-            date: backtestDate,
-        };
-
-        if (strategy === StrategyType.ATM_STRANGLE && strangleDistance <= 0) {
-            addLog(`Strangle distance must be positive.`, 'error');
-            return;
-        }
-        
-        setIsBacktesting(true);
-        setHistoricalResult(null); // Reuse historical result chart
-        addLog(`Starting backtest for ${backtestDate}...`, 'info');
-        
-        try {
-            const result = await api.executeBacktest(params);
-            setHistoricalResult(result);
-            addLog(`Backtest complete. Final P/L: ${result.finalPnL.toFixed(2)}`, 'success');
-        } catch (error) {
-            addLog(`Backtest failed: ${(error as Error).message}`, 'error');
-        } finally {
-            setIsBacktesting(false);
-        }
-    }, [strategy, instrument, selectedExpiry, lots, stopLossPoints, targetPoints, maxLossLimit, strangleDistance, backtestDate, addLog]);
-
     const fetchData = useCallback(async (isManual = false) => {
         if (isManual) {
             setIsManualRefreshing(true);
@@ -697,7 +627,12 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                         <select
                             id="instrument-select"
                             value={instrument}
-                            onChange={(e) => setInstrument(e.target.value as Instrument)}
+                            onChange={(e) => {
+                                const newInstrument = e.target.value as Instrument;
+                                // Reset ref to allow reloading expiries for the new instrument
+                                expiriesLoadedForInstrumentRef.current = '';
+                                setInstrument(newInstrument);
+                            }}
                             disabled={isRunning}
                             className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
                         >
@@ -721,18 +656,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                                 </option>
                             ))}
                         </select>
-                    </div>
-                    
-                    <div>
-                        <label htmlFor="backtest-date" className="block text-xs font-medium text-slate-400 mb-1">Backtest Date</label>
-                        <input
-                            id="backtest-date"
-                            type="date"
-                            value={backtestDate}
-                            onChange={(e) => setBacktestDate(e.target.value)}
-                            disabled={isRunning || isBacktesting}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue [color-scheme:dark]"
-                        />
                     </div>
 
                     {strategy === StrategyType.ATM_STRANGLE && (
@@ -796,23 +719,9 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                     </div>
                 </div>
                  <div className="flex justify-end mt-4 space-x-4">
-                     <button
-                        onClick={handleRunBacktest}
-                        disabled={isRunning || isHistoricalRunning || isBacktesting || !instrument || !strategy}
-                        className="px-6 py-2 rounded-md font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-transform transform hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed disabled:scale-100"
-                     >
-                        {isBacktesting ? 'Backtesting...' : 'Run Backtest'}
-                     </button>
-                     <button
-                        onClick={handleRunHistorical}
-                        disabled={isRunning || isHistoricalRunning || isBacktesting || !instrument || !strategy || !selectedExpiry}
-                        className="px-6 py-2 rounded-md font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-transform transform hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed disabled:scale-100"
-                     >
-                        {isHistoricalRunning ? 'Simulating...' : 'Run Historical'}
-                     </button>
                      <button 
                         onClick={handleStartStop}
-                        disabled={isStoppingBot || isHistoricalRunning || isBacktesting || botStatus === BotStatus.MAX_LOSS_REACHED || !instrument || !strategy || !selectedExpiry}
+                        disabled={isStoppingBot || botStatus === BotStatus.MAX_LOSS_REACHED || !instrument || !strategy || !selectedExpiry}
                         className={`px-6 py-2 rounded-md font-semibold text-white transition-transform transform hover:scale-105 ${
                             isRunning 
                                 ? (confirmingStopBot ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700') 
@@ -826,12 +735,6 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                      </button>
                 </div>
             </div>
-
-            {historicalResult && (
-                <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6">
-                    <HistoricalPLChart data={historicalResult} onClear={() => setHistoricalResult(null)} />
-                </div>
-            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 bg-slate-800 p-4 rounded-lg border border-slate-700">
