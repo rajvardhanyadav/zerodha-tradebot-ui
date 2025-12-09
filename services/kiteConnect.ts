@@ -5,8 +5,8 @@
  */
 import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, TradingModeStatus, OrderCharge, BotStatusResponse } from '../types';
 
-//const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
-const BASE_URL = 'http://localhost:8080/api';
+const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
+//const BASE_URL = 'http://localhost:8080/api';
 
 // --- API Logger ---
 export type ApiLogType = 'info' | 'success' | 'error' | 'warning';
