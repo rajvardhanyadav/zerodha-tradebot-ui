@@ -166,37 +166,36 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         return () => clearInterval(clockTimer);
     }, []);
 
-    // Effect for loading initial config data
+    // Effect for loading initial config data - Sequential API calls to respect rate limits
     useEffect(() => {
         if (initialDataLoadedRef.current) return;
         initialDataLoadedRef.current = true;
 
         const loadInitialData = async () => {
             try {
-                const [fetchedStrategies, fetchedInstruments, profile, modeStatus] = await Promise.all([
-                    api.getStrategyTypes(),
-                    api.getTradeableInstruments(),
-                    api.getUserProfile(),
-                    api.getTradingModeStatus(),
-                ]);
+                // Sequential API calls to respect server rate limits
+                const profile = await api.getUserProfile();
+                setUserProfile(profile);
 
+                const modeStatus = await api.getTradingModeStatus();
                 if (modeStatus) {
                     setTradingMode(modeStatus.mode);
                 }
 
-                setUserProfile(profile);
-                // Display all strategies returned by the API
+                const fetchedStrategies = await api.getStrategyTypes();
                 const availableStrategies = fetchedStrategies;
                 setStrategyTypes(availableStrategies);
-                setInstruments(fetchedInstruments);
-
                 if (availableStrategies.length > 0) {
                     setStrategy(availableStrategies[0].name);
                 }
+
+                const fetchedInstruments = await api.getTradeableInstruments();
+                setInstruments(fetchedInstruments);
                 if (fetchedInstruments.length > 0) {
                     setInstrument(fetchedInstruments[0].code as Instrument);
                 }
-                 addLog(`Welcome, ${profile.userName}. Configurations loaded.`, 'success');
+
+                addLog(`Welcome, ${profile.userName}. Configurations loaded.`, 'success');
             } catch (e) {
                 // Error is logged by API logger
             }
@@ -292,29 +291,19 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         }
     
         try {
-            const promises: Promise<any>[] = [
-                tradingService.getActiveStrategies(),
-                api.getMonitoringStatus(),
-                api.getPositions(),
-                api.getOrders(),
-                api.getOrderCharges(),
-                api.getBotStatus(), // Fetch bot status
-            ];
-
+            // Sequential API calls to respect server rate limits
+            const fetchedStrategies = await tradingService.getActiveStrategies();
+            const monitorStatus = await api.getMonitoringStatus();
+            const fetchedPositions = await api.getPositions();
+            const fetchedOrders = await api.getOrders();
+            const fetchedCharges = await api.getOrderCharges();
+            const fetchedBotStatus = await api.getBotStatus();
+            
+            let currentLtp: number | undefined;
             const selectedInstrumentObject = instruments.find(i => i.code === instrument);
             if (selectedInstrumentObject) {
-                promises.push(api.getLTP(selectedInstrumentObject.name));
+                currentLtp = await api.getLTP(selectedInstrumentObject.name);
             }
-
-            const results = await Promise.all(promises);
-            
-            const fetchedStrategies = results[0] as StrategyPosition[];
-            const monitorStatus = results[1] as MonitoringStatus;
-            const fetchedPositions = results[2] as Position[];
-            const fetchedOrders = results[3] as Order[];
-            const fetchedCharges = results[4] as OrderCharge[];
-            const fetchedBotStatus = results[5] as BotStatusResponse;
-            const currentLtp = results.length > 6 ? results[6] as number : undefined;
             
             if (currentLtp !== undefined) {
                 setLtp(prevLtp => (currentLtp !== prevLtp ? currentLtp : prevLtp));
