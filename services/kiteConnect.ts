@@ -5,8 +5,8 @@
  */
 import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, TradingModeStatus, OrderCharge, BotStatusResponse } from '../types';
 
-//const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
-const BASE_URL = 'http://localhost:8080/api';
+//const BASE_URL = 'http://localhost:8080/api';
+const BASE_URL = 'https://zerodhabot-genai-3-874874921792.asia-south2.run.app/api';
 
 // --- API Logger ---
 export type ApiLogType = 'info' | 'success' | 'error' | 'warning';
@@ -34,7 +34,6 @@ const emitApiLog = (log: Omit<ApiLogEntry, 'timestamp'>) => {
     };
     apiLogListeners.forEach(listener => listener(entry));
 };
-//const BASE_URL = 'https://zerodhabot-genai-3-874874921792.asia-south2.run.app/api';
 
 // --- Helper Functions ---
 const getEndpointDescription = (endpoint: string, method: string): string => {
