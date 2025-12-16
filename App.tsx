@@ -63,7 +63,13 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch (e) {
+      // Continue with local logout even if API call fails
+      console.error('Logout API call failed:', e);
+    }
     safeRemoveAuth();
   };
   

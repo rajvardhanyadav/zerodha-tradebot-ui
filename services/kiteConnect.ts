@@ -6,7 +6,7 @@
 import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, TradingModeStatus, OrderCharge, BotStatusResponse } from '../types';
 
 //const BASE_URL = 'https://zerodhabot-genai-3.onrender.com/api';
-//const BASE_URL = 'http://localhost:8080/api';
+const BASE_URL = 'http://localhost:8080/api';
 
 // --- API Logger ---
 export type ApiLogType = 'info' | 'success' | 'error' | 'warning';
@@ -34,13 +34,14 @@ const emitApiLog = (log: Omit<ApiLogEntry, 'timestamp'>) => {
     };
     apiLogListeners.forEach(listener => listener(entry));
 };
-const BASE_URL = 'https://zerodhabot-genai-3-874874921792.asia-south2.run.app/api';
+//const BASE_URL = 'https://zerodhabot-genai-3-874874921792.asia-south2.run.app/api';
 
 // --- Helper Functions ---
 const getEndpointDescription = (endpoint: string, method: string): string => {
     const descriptions: Record<string, string> = {
         'GET /auth/login-url': 'Fetching login URL',
         'POST /auth/session': 'Exchanging token for session',
+        'POST /auth/logout': 'Logging out',
         'GET /auth/profile': 'Fetching user profile',
         'GET /market/ltp': 'Fetching LTP',
         'GET /strategies/types': 'Loading strategy types',
@@ -203,6 +204,11 @@ export const exchangeToken = async (requestToken: string): Promise<{ jwtToken: s
 
 // Corresponds to /api/auth/profile
 export const getUserProfile = (): Promise<UserProfile> => apiFetch('/auth/profile');
+
+// Corresponds to /api/auth/logout
+export const logout = (): Promise<void> => apiFetch('/auth/logout', {
+    method: 'POST',
+});
 
 // --- Strategy & Instrument APIs ---
 

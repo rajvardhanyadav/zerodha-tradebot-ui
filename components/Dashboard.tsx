@@ -51,6 +51,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [monitoringStatus, setMonitoringStatus] = useState<MonitoringStatus | null>(null);
     const [stoppingMonitorId, setStoppingMonitorId] = useState<string | null>(null);
     const [isStoppingBot, setIsStoppingBot] = useState<boolean>(false);
+    const [isStartingBot, setIsStartingBot] = useState<boolean>(false);
     const [activeTab, setActiveTab] = useState<'strategies' | 'positions' | 'orders'>('strategies');
     const [confirmingStopBot, setConfirmingStopBot] = useState<boolean>(false);
     const [confirmingStartBot, setConfirmingStartBot] = useState<boolean>(false);
@@ -450,8 +451,9 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 setConfirmingLogout(false);
             }
         } else if (botStatus === BotStatus.STOPPED || botStatus === BotStatus.INACTIVE) {
+            if (isStartingBot) return;
             if (confirmingStartBot) {
-                // Optimistic update; executeStrategy will confirm or fetchData will sync
+                setIsStartingBot(true);
                 setConfirmingStartBot(false);
                 const strategyDesc = strategy.replace(/_/g, ' ');
                 const fullDesc = strategy === StrategyType.ATM_STRANGLE 
@@ -459,7 +461,11 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                     : strategyDesc;
                 addLog(`Starting bot for ${instrument} (${selectedExpiry}) with strategy: ${fullDesc}.`, 'info');
                 
-                await executeStrategy();
+                try {
+                    await executeStrategy();
+                } finally {
+                    setIsStartingBot(false);
+                }
             } else {
                 setConfirmingStartBot(true);
                 setConfirmingStopBot(false);
@@ -709,16 +715,16 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                  <div className="flex justify-end mt-4 space-x-4">
                      <button 
                         onClick={handleStartStop}
-                        disabled={isStoppingBot || botStatus === BotStatus.MAX_LOSS_REACHED || !instrument || !strategy || !selectedExpiry}
+                        disabled={isStoppingBot || isStartingBot || botStatus === BotStatus.MAX_LOSS_REACHED || !instrument || !strategy || !selectedExpiry}
                         className={`px-6 py-2 rounded-md font-semibold text-white transition-transform transform hover:scale-105 ${
                             isRunning 
                                 ? (confirmingStopBot ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700') 
-                                : (confirmingStartBot ? 'bg-green-700 hover:bg-green-800' : 'bg-green-600 hover:bg-green-700')
+                                : (confirmingStartBot || isStartingBot ? 'bg-green-700 hover:bg-green-800' : 'bg-green-600 hover:bg-green-700')
                         } disabled:bg-gray-500 disabled:cursor-not-allowed disabled:scale-100`}
                      >
                         {isRunning 
                             ? (isStoppingBot ? 'Stopping...' : (confirmingStopBot ? 'Confirm Stop?' : 'Stop Bot')) 
-                            : (confirmingStartBot ? 'Confirm Start?' : 'Start Bot')
+                            : (isStartingBot ? 'Starting...' : (confirmingStartBot ? 'Confirm Start?' : 'Start Bot'))
                         }
                      </button>
                 </div>
