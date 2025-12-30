@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, OrderCharge, BotStatusResponse } from '../types';
+import { Instrument, BotStatus, TradeLog, StrategyType, ApiStrategyType, ApiInstrument, StrategyPosition, UserProfile, MonitoringStatus, Order, Position, OrderCharge, BotStatusResponse, HistoricalRunResult } from '../types';
 import * as tradingService from '../services/tradingService';
 import * as api from './../services/kiteConnect';
 import { subscribeToApiLogs } from './../services/kiteConnect';
@@ -9,6 +9,7 @@ import ActiveStrategiesTable from './ActiveStrategiesTable';
 import PositionsTable from './PositionsTable';
 import OrdersTable from './OrdersTable';
 import TradeLogView from './TradeLogView';
+import HistoricalPLChart from './HistoricalPLChart';
 
 const TabButton: React.FC<{ title: string; isActive: boolean; onClick: () => void }> = ({ title, isActive, onClick }) => (
     <button

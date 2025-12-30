@@ -3,7 +3,7 @@
  * This service acts as the API client for the trading bot backend.
  * It implements the API specification provided, handling authentication and data fetching.
  */
-import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, TradingModeStatus, OrderCharge, BotStatusResponse } from '../types';
+import { StrategyPosition, ApiStrategyType, ApiInstrument, UserProfile, MonitoringStatus, Order, Position, TradingModeStatus, OrderCharge, BotStatusResponse, HistoricalRunResult } from '../types';
 
 //const BASE_URL = 'http://localhost:8080/api';
 const BASE_URL = 'https://zerodhabot-genai-3-874874921792.asia-south2.run.app/api';
@@ -245,12 +245,6 @@ export const getBotStatus = (): Promise<BotStatusResponse> => apiFetch('/strateg
 
 // --- Historical Replay API ---
 export const executeHistoricalStrategy = (params: any): Promise<HistoricalRunResult> => apiFetch('/historical/execute', {
-    method: 'POST',
-    body: JSON.stringify(params),
-});
-
-// --- Backtest API ---
-export const executeBacktest = (params: any): Promise<HistoricalRunResult> => apiFetch('/backtest/execute', {
     method: 'POST',
     body: JSON.stringify(params),
 });
