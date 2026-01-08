@@ -8,9 +8,13 @@ interface ExecuteStrategyParams {
   expiry: string; // e.g., "WEEKLY", "MONTHLY", or "2024-11-28"
   strikeGap?: number;
   lots: number;
-  stopLossPoints: number;
-  targetPoints: number;
   maxLossLimit: number;
+  // Point-based SL/Target (optional - used when point mode is selected)
+  stopLossPoints?: number;
+  targetPoints?: number;
+  // Percentage-based SL/Target (optional - used when percentage mode is selected)
+  targetDecayPct?: number;
+  stopLossExpansionPct?: number;
 }
 
 export const runStrategy = async (params: ExecuteStrategyParams): Promise<any> => {
@@ -19,10 +23,24 @@ export const runStrategy = async (params: ExecuteStrategyParams): Promise<any> =
         instrumentType: params.instrumentType,
         expiry: params.expiry,
         lots: params.lots,
-        stopLossPoints: params.stopLossPoints,
-        targetPoints: params.targetPoints,
         maxLossLimit: params.maxLossLimit,
     };
+
+    // Add SL/Target params based on which mode was used
+    // Point-based mode
+    if (params.stopLossPoints !== undefined) {
+        apiParams.stopLossPoints = params.stopLossPoints;
+    }
+    if (params.targetPoints !== undefined) {
+        apiParams.targetPoints = params.targetPoints;
+    }
+    // Percentage-based mode
+    if (params.targetDecayPct !== undefined) {
+        apiParams.targetDecayPct = params.targetDecayPct;
+    }
+    if (params.stopLossExpansionPct !== undefined) {
+        apiParams.stopLossExpansionPct = params.stopLossExpansionPct;
+    }
 
     // FIX: Corrected typo from OTM_STRANGLE to ATM_STRANGLE to match the StrategyType enum.
     if (params.strategyType === StrategyType.ATM_STRANGLE && params.strikeGap) {

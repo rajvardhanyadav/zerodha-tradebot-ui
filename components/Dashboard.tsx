@@ -33,6 +33,10 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [stopLossPoints, setStopLossPoints] = useState<number>(5);
     const [targetPoints, setTargetPoints] = useState<number>(5);
     const [maxLossLimit, setMaxLossLimit] = useState<number>(3000);
+    // Percentage-based SL/Target mode
+    const [slTargetMode, setSlTargetMode] = useState<'points' | 'percentage'>('points');
+    const [targetDecayPct, setTargetDecayPct] = useState<number>(50);
+    const [stopLossExpansionPct, setStopLossExpansionPct] = useState<number>(100);
     const [expiries, setExpiries] = useState<string[]>([]);
     const [selectedExpiry, setSelectedExpiry] = useState<string>('');
     const [totalPL, setTotalPL] = useState<number>(0);
@@ -257,16 +261,23 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         
         addLog('Note: New API does not support auto-closing positions. A new strategy will be opened.', 'warning');
 
-        const params = {
+        const params: any = {
             strategyType: strategy,
             instrumentType: instrument,
             expiry: selectedExpiry,
             lots: lots,
-            stopLossPoints,
-            targetPoints,
             maxLossLimit,
             strikeGap: strategy === StrategyType.ATM_STRANGLE ? strangleDistance : undefined,
         };
+
+        // Include SL/Target params based on selected mode
+        if (slTargetMode === 'points') {
+            params.stopLossPoints = stopLossPoints;
+            params.targetPoints = targetPoints;
+        } else {
+            params.targetDecayPct = targetDecayPct;
+            params.stopLossExpansionPct = stopLossExpansionPct;
+        }
 
         if (strategy === StrategyType.ATM_STRANGLE) {
             if (strangleDistance <= 0) {
@@ -277,7 +288,10 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
 
         const strategyDesc = strategy.replace(/_/g, ' ');
         const fullDesc = strategy === StrategyType.ATM_STRANGLE ? `${strategyDesc} (${strangleDistance} pts)` : strategyDesc;
-        addLog(`Executing: ${fullDesc} on ${instrument} for ${selectedExpiry} expiry with ${lots} lot(s).`, 'info');
+        const slTargetDesc = slTargetMode === 'points' 
+            ? `SL: ${stopLossPoints}pts, Target: ${targetPoints}pts`
+            : `SL Expansion: ${stopLossExpansionPct}%, Target Decay: ${targetDecayPct}%`;
+        addLog(`Executing: ${fullDesc} on ${instrument} for ${selectedExpiry} expiry with ${lots} lot(s). ${slTargetDesc}`, 'info');
 
         try {
             const result = await tradingService.runStrategy(params);
@@ -285,7 +299,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
         } catch (error) {
             // Error is logged by API logger
         }
-    }, [instrument, addLog, totalPL, selectedExpiry, strategy, strangleDistance, lots, stopLossPoints, targetPoints, maxLossLimit]);
+    }, [instrument, addLog, totalPL, selectedExpiry, strategy, strangleDistance, lots, stopLossPoints, targetPoints, maxLossLimit, slTargetMode, targetDecayPct, stopLossExpansionPct]);
     
     const fetchData = useCallback(async (isManual = false) => {
         if (isManual) {
@@ -460,7 +474,10 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 const fullDesc = strategy === StrategyType.ATM_STRANGLE 
                     ? `${strategyDesc} (${strangleDistance} pts)` 
                     : strategyDesc;
-                addLog(`Starting bot for ${instrument} (${selectedExpiry}) with strategy: ${fullDesc}.`, 'info');
+                const slTargetInfo = slTargetMode === 'points'
+                    ? `SL: ${stopLossPoints}pts, Target: ${targetPoints}pts`
+                    : `SL Expansion: ${stopLossExpansionPct}%, Target Decay: ${targetDecayPct}%`;
+                addLog(`Starting bot for ${instrument} (${selectedExpiry}) with strategy: ${fullDesc}. ${slTargetInfo}`, 'info');
                 
                 try {
                     await executeStrategy();
@@ -679,28 +696,126 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                             <button onClick={handleIncrementLots} disabled={isRunning} className="px-2.5 py-1.5 text-base font-bold hover:bg-slate-700 transition-colors rounded-r-md disabled:opacity-50 disabled:cursor-not-allowed">+</button>
                         </div>
                     </div>
-                    <div>
-                        <label htmlFor="stop-loss" className="block text-xs font-medium text-slate-400 mb-1">SL per Leg (pts)</label>
-                        <input
-                            id="stop-loss"
-                            type="number"
-                            value={stopLossPoints}
-                            onChange={(e) => setStopLossPoints(Number(e.target.value))}
-                            disabled={isRunning}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
-                        />
+                    {/* SL/Target Mode Toggle */}
+                    <div className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-2">
+                        <label className="block text-xs font-medium text-slate-400 mb-1">SL/Target Mode</label>
+                        <div className="flex bg-slate-900 border border-slate-700 rounded-md overflow-hidden">
+                            <button
+                                type="button"
+                                onClick={() => setSlTargetMode('points')}
+                                disabled={isRunning}
+                                className={`flex-1 px-3 py-1.5 text-sm font-medium transition-colors ${
+                                    slTargetMode === 'points'
+                                        ? 'bg-kite-blue text-white'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                                Points
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSlTargetMode('percentage')}
+                                disabled={isRunning}
+                                className={`flex-1 px-3 py-1.5 text-sm font-medium transition-colors ${
+                                    slTargetMode === 'percentage'
+                                        ? 'bg-kite-blue text-white'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                                Percentage
+                            </button>
+                        </div>
                     </div>
-                    <div>
-                        <label htmlFor="target-points" className="block text-xs font-medium text-slate-400 mb-1">Target per Leg (pts)</label>
-                        <input
-                            id="target-points"
-                            type="number"
-                            value={targetPoints}
-                            onChange={(e) => setTargetPoints(Number(e.target.value))}
-                            disabled={isRunning}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
-                        />
-                    </div>
+
+                    {/* Point-based inputs */}
+                    {slTargetMode === 'points' && (
+                        <>
+                            <div>
+                                <label htmlFor="stop-loss" className="block text-xs font-medium text-slate-400 mb-1">SL per Leg (pts)</label>
+                                <input
+                                    id="stop-loss"
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={stopLossPoints}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                            setStopLossPoints(val === '' ? 0 : Number(val));
+                                        }
+                                    }}
+                                    disabled={isRunning}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="target-points" className="block text-xs font-medium text-slate-400 mb-1">Target per Leg (pts)</label>
+                                <input
+                                    id="target-points"
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={targetPoints}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                            setTargetPoints(val === '' ? 0 : Number(val));
+                                        }
+                                    }}
+                                    disabled={isRunning}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                                />
+                            </div>
+                        </>
+                    )}
+
+                    {/* Percentage-based inputs */}
+                    {slTargetMode === 'percentage' && (
+                        <>
+                            <div>
+                                <label htmlFor="stop-loss-expansion" className="block text-xs font-medium text-slate-400 mb-1">SL Expansion (%)</label>
+                                <input
+                                    id="stop-loss-expansion"
+                                    type="number"
+                                    min="0"
+                                    max="500"
+                                    step="1"
+                                    value={stopLossExpansionPct}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                            const numVal = val === '' ? 0 : Number(val);
+                                            setStopLossExpansionPct(Math.min(500, Math.max(0, numVal)));
+                                        }
+                                    }}
+                                    disabled={isRunning}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                                    title="Percentage by which stop-loss expands (0-500%)"
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="target-decay" className="block text-xs font-medium text-slate-400 mb-1">Target Decay (%)</label>
+                                <input
+                                    id="target-decay"
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="1"
+                                    value={targetDecayPct}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                            const numVal = val === '' ? 0 : Number(val);
+                                            setTargetDecayPct(Math.min(100, Math.max(0, numVal)));
+                                        }
+                                    }}
+                                    disabled={isRunning}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-kite-blue"
+                                    title="Target percentage decay (0-100%)"
+                                />
+                            </div>
+                        </>
+                    )}
                     <div>
                         <label htmlFor="max-loss" className="block text-xs font-medium text-slate-400 mb-1">Max Loss Limit (₹)</label>
                         <input
