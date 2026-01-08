@@ -34,9 +34,9 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [targetPoints, setTargetPoints] = useState<number>(5);
     const [maxLossLimit, setMaxLossLimit] = useState<number>(3000);
     // Percentage-based SL/Target mode
-    const [slTargetMode, setSlTargetMode] = useState<'points' | 'percentage'>('points');
-    const [targetDecayPct, setTargetDecayPct] = useState<number>(50);
-    const [stopLossExpansionPct, setStopLossExpansionPct] = useState<number>(100);
+    const [slTargetMode, setSlTargetMode] = useState<'points' | 'percentage'>('percentage');
+    const [targetDecayPct, setTargetDecayPct] = useState<number>(3.5);
+    const [stopLossExpansionPct, setStopLossExpansionPct] = useState<number>(7);
     const [expiries, setExpiries] = useState<string[]>([]);
     const [selectedExpiry, setSelectedExpiry] = useState<string>('');
     const [totalPL, setTotalPL] = useState<number>(0);
@@ -192,7 +192,9 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                 const availableStrategies = fetchedStrategies;
                 setStrategyTypes(availableStrategies);
                 if (availableStrategies.length > 0) {
-                    setStrategy(availableStrategies[0].name);
+                    // Prefer SELL_ATM_STRADDLE as default if available
+                    const preferredStrategy = availableStrategies.find(s => s.name === 'SELL_ATM_STRADDLE');
+                    setStrategy(preferredStrategy ? preferredStrategy.name : availableStrategies[0].name);
                 }
 
                 const fetchedInstruments = await api.getTradeableInstruments();
