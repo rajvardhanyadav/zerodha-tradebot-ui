@@ -35,8 +35,8 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
     const [maxLossLimit, setMaxLossLimit] = useState<number>(3000);
     // Percentage-based SL/Target mode
     const [slTargetMode, setSlTargetMode] = useState<'points' | 'percentage'>('percentage');
-    const [targetDecayPct, setTargetDecayPct] = useState<number>(3.5);
-    const [stopLossExpansionPct, setStopLossExpansionPct] = useState<number>(7);
+    const [targetDecayPct, setTargetDecayPct] = useState<number>(5);
+    const [stopLossExpansionPct, setStopLossExpansionPct] = useState<number>(5);
     const [expiries, setExpiries] = useState<string[]>([]);
     const [selectedExpiry, setSelectedExpiry] = useState<string>('');
     const [totalPL, setTotalPL] = useState<number>(0);
@@ -529,6 +529,12 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
                         <h1 className="text-2xl font-bold text-slate-200">TradeBot Dashboard</h1>
                         {userProfile && <p className="text-sm text-slate-400">Welcome, {userProfile.userName}</p>}
                     </div>
+                </div>
+                <div className="hidden md:flex flex-col items-center text-slate-300 bg-slate-800/50 px-4 py-2 rounded-lg border border-slate-700">
+                    <span className="text-xs text-slate-400 uppercase tracking-wide">Current Time</span>
+                    <span className="text-lg font-semibold tabular-nums">
+                        {currentTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
                 </div>
                 <div className="flex items-center space-x-4 mt-4 md:mt-0">
                     {tradingMode && (
