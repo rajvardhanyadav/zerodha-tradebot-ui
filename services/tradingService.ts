@@ -9,6 +9,8 @@ interface ExecuteStrategyParams {
   strikeGap?: number;
   lots: number;
   maxLossLimit: number;
+  // SL/Target mode: 'points' or 'percentage'
+  slTargetMode: 'points' | 'percentage';
   // Point-based SL/Target (optional - used when point mode is selected)
   stopLossPoints?: number;
   targetPoints?: number;
@@ -24,6 +26,7 @@ export const runStrategy = async (params: ExecuteStrategyParams): Promise<any> =
         expiry: params.expiry,
         lots: params.lots,
         maxLossLimit: params.maxLossLimit,
+        slTargetMode: params.slTargetMode,
     };
 
     // Add SL/Target params based on which mode was used

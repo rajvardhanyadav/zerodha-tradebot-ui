@@ -269,6 +269,7 @@ const Dashboard: React.FC<{ onLogout: () => void; }> = ({ onLogout }) => {
             expiry: selectedExpiry,
             lots: lots,
             maxLossLimit,
+            slTargetMode,
             strikeGap: strategy === StrategyType.ATM_STRANGLE ? strangleDistance : undefined,
         };
 
