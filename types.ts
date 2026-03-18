@@ -162,3 +162,86 @@ export interface BotStatusResponse {
     status: 'RUNNING' | 'STOPPED';
     lastUpdated: string;
 }
+
+// ============================================================
+// Backtest API Types
+// ============================================================
+
+export interface BacktestApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T | null;
+}
+
+export interface BacktestRequest {
+  backtestDate: string;
+  strategyType: "SELL_ATM_STRADDLE" | "ATM_STRADDLE";
+  instrumentType: "NIFTY" | "BANKNIFTY";
+  expiryDate: string;
+  lots?: number;
+  slTargetMode?: "points" | "premium" | "percentage";
+  stopLossPoints?: number;
+  targetPoints?: number;
+  targetDecayPct?: number;
+  stopLossExpansionPct?: number;
+  startTime?: string;
+  endTime?: string;
+  autoSquareOffTime?: string;
+  candleInterval?: string;
+  autoRestartEnabled?: boolean;
+  maxAutoRestarts?: number;
+  trailingStopEnabled?: boolean;
+  trailingActivationPoints?: number;
+  trailingDistancePoints?: number;
+}
+
+export interface BacktestResult {
+  backtestId: string;
+  backtestDate: string;
+  strategyType: string;
+  instrumentType: string;
+  status: "COMPLETED" | "FAILED" | "RUNNING";
+  errorMessage: string | null;
+  spotPriceAtEntry: number;
+  atmStrike: number;
+  trades: BacktestTrade[];
+  totalPnLPoints: number;
+  totalPnLAmount: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  maxDrawdownPct: number;
+  maxProfitPct: number;
+  avgWinAmount: number;
+  avgLossAmount: number;
+  profitFactor: number;
+  restartCount: number;
+  executionDurationMs: number;
+}
+
+export interface BacktestTrade {
+  tradeNumber: number;
+  ceSymbol: string;
+  peSymbol: string;
+  strikePrice: number;
+  entryTime: string;
+  ceEntryPrice: number;
+  peEntryPrice: number;
+  combinedEntryPremium: number;
+  exitTime: string;
+  ceExitPrice: number;
+  peExitPrice: number;
+  combinedExitPremium: number;
+  quantity: number;
+  pnlPoints: number;
+  pnlAmount: number;
+  exitReason: string;
+  wasRestarted: boolean;
+}
+
+export interface BacktestStrategyInfo {
+  name: string;
+  description: string;
+  backtestSupported: boolean;
+}

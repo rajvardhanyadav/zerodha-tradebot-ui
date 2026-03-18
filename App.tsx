@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
+import BacktestPage from './components/BacktestPage';
 import Callback from './components/Callback';
 import * as api from './services/kiteConnect';
 
@@ -20,6 +21,7 @@ const App: React.FC = () => {
   const [auth, setAuth] = useState(getInitialAuth());
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'backtest'>('dashboard');
 
   useEffect(() => {
     // Ensure dark theme is applied
@@ -94,7 +96,39 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 font-sans text-slate-200">
-      {auth.token && auth.userId ? <Dashboard onLogout={handleLogout} /> : <LoginScreen onAuthSuccess={handleAuthSuccess} />}
+      {auth.token && auth.userId ? (
+        <>
+          {/* Top Navigation Bar */}
+          <nav className="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
+            <div className="max-w-7xl mx-auto px-4 md:px-8 flex items-center">
+              <button
+                onClick={() => setCurrentPage('dashboard')}
+                className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                  currentPage === 'dashboard'
+                    ? 'border-kite-blue text-slate-200'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={() => setCurrentPage('backtest')}
+                className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                  currentPage === 'backtest'
+                    ? 'border-kite-blue text-slate-200'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Backtest
+              </button>
+            </div>
+          </nav>
+          {/* Page Content */}
+          {currentPage === 'dashboard' ? <Dashboard onLogout={handleLogout} /> : <BacktestPage />}
+        </>
+      ) : (
+        <LoginScreen onAuthSuccess={handleAuthSuccess} />
+      )}
     </div>
   );
 };
