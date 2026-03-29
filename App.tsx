@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import BacktestPage from './components/BacktestPage';
+import MarketAnalysisPage from './components/MarketAnalysisPage';
 import Callback from './components/Callback';
 import * as api from './services/kiteConnect';
 
@@ -21,7 +22,7 @@ const App: React.FC = () => {
   const [auth, setAuth] = useState(getInitialAuth());
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'backtest'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'backtest' | 'market-analysis'>('dashboard');
 
   useEffect(() => {
     // Ensure dark theme is applied
@@ -121,10 +122,22 @@ const App: React.FC = () => {
               >
                 Backtest
               </button>
+              <button
+                onClick={() => setCurrentPage('market-analysis')}
+                className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                  currentPage === 'market-analysis'
+                    ? 'border-kite-blue text-slate-200'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Market Analysis
+              </button>
             </div>
           </nav>
           {/* Page Content */}
-          {currentPage === 'dashboard' ? <Dashboard onLogout={handleLogout} /> : <BacktestPage />}
+          {currentPage === 'dashboard' && <Dashboard onLogout={handleLogout} />}
+          {currentPage === 'backtest' && <BacktestPage />}
+          {currentPage === 'market-analysis' && <MarketAnalysisPage />}
         </>
       ) : (
         <LoginScreen onAuthSuccess={handleAuthSuccess} />

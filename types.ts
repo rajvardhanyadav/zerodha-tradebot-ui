@@ -245,3 +245,71 @@ export interface BacktestStrategyInfo {
   description: string;
   backtestSupported: boolean;
 }
+
+// ============================================================
+// Market Analysis API Types
+// ============================================================
+
+export type MarketRegime = 'STRONG_NEUTRAL' | 'WEAK_NEUTRAL' | 'TRENDING';
+export type BreakoutRisk = 'LOW' | 'MEDIUM' | 'HIGH';
+export type VetoReason = 'BREAKOUT_HIGH' | 'EXCESSIVE_RANGE' | null;
+
+export interface NeutralMarketLog {
+  id: number;
+  instrument: string;
+  evaluatedAt: string;
+  tradingDate: string;
+  spotPrice: number;
+  vwapValue: number | null;
+
+  tradable: boolean;
+  regime: MarketRegime;
+  breakoutRisk: BreakoutRisk;
+  vetoReason: string | null;
+
+  regimeScore: number;
+  microScore: number;
+  finalScore: number;
+  confidence: number;
+  timeAdjustment: number | null;
+  microTradable: boolean;
+
+  vwapProximityPassed: boolean;
+  vwapDeviation: number | null;
+  rangeCompressionPassed: boolean;
+  rangeFraction: number | null;
+  oscillationPassed: boolean;
+  oscillationReversals: number | null;
+  adxPassed: boolean;
+  adxValue: number | null;
+  gammaPinPassed: boolean;
+  expiryDay: boolean;
+
+  microVwapPullbackPassed: boolean;
+  microHfOscillationPassed: boolean;
+  microRangeStabilityPassed: boolean;
+
+  breakoutRiskLow: boolean;
+  excessiveRangeSafe: boolean;
+
+  summary: string | null;
+  evaluationDurationMs: number | null;
+  createdAt: string;
+}
+
+export interface NeutralMarketSummary {
+  date: string;
+  totalEvaluations: number;
+  tradableCount: number;
+  skippedCount: number;
+  tradablePercentage: number;
+
+  avgRegimeScore: number | null;
+  avgMicroScore: number | null;
+  avgConfidence: number | null;
+  avgEvaluationDurationMs: number | null;
+
+  regimeDistribution: Record<string, number>;
+  vetoReasonDistribution: Record<string, number>;
+  signalPassRates: Record<string, string>;
+}
