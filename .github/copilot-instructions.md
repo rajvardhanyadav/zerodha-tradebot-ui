@@ -3,11 +3,12 @@
 ## Architecture
 
 - **React 19 SPA** with Vite 6 — no routing library; page switching via `currentPage` state in `App.tsx`
-- **Three pages:** `LoginScreen`, `Dashboard`, `BacktestPage`
+- **Four pages:** `LoginScreen`, `Dashboard`, `BacktestPage`, `MarketAnalysisPage`
 - **Dark theme only** — forced globally via `document.documentElement.classList.add('dark')`
 - **No global state management** — React hooks only (`useState`, `useEffect`, `useCallback`, `useMemo`, `useRef`); auth persisted in localStorage
 - **File layout:** `/components` for UI, `/services` for API clients, root for config/types
 - **Custom SVG charts** — no charting library; see `BacktestResultView.tsx` for patterns
+- **Three services:** `kiteConnect.ts` (core trading), `backtestService.ts` (backtesting), `marketAnalysisService.ts` (neutral market analysis) — each with independent `apiFetch<T>()` wrapper
 
 ## Code Style
 
@@ -48,6 +49,12 @@ npm run preview  # Preview production build
 - See [BACKTEST_FRONTEND_INTEGRATION.md](../BACKTEST_FRONTEND_INTEGRATION.md) for full endpoint reference, types, and async polling patterns
 - Exit reason codes: `TARGET_HIT`, `STOPLOSS_HIT`, `PREMIUM_DECAY`, `PREMIUM_EXPANSION`, `TRAILING`, `TIME_BASED_FORCED_EXIT`, `END_OF_DATA`
 - Formatting helpers in `backtestService.ts`: `formatCurrency()` (₹), `formatPoints()`, `formatPct()`
+
+### Market Analysis API
+- See [MARKET_ANALYSIS_API_SPEC.md](../MARKET_ANALYSIS_API_SPEC.md) for the 3-layer neutral market scoring model (regime, microstructure, veto gates)
+- Runs every 30s during market hours (09:15–15:10 IST)
+- Types: `NeutralMarketLog`, `NeutralMarketSummary`, `MarketRegime`, `BreakoutRisk` in `types.ts`
+- Formatting helpers in `marketAnalysisService.ts`: `formatConfidence()`, `formatScore()`
 
 ## Pitfalls
 
